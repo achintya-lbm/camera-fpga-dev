@@ -1,0 +1,503 @@
+load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+
+# -*- mode: bazel -*-
+# Holoscan SDK v3.9.0 built from source (repository.bzl). Mirrors src/CMakeLists.txt,
+# src/operators/*/CMakeLists.txt and gxf_extensions/ucx/CMakeLists.txt for the parts
+# this project uses: core (with logger, profiler, spdlog_logger and the GPU-resident
+# CUDA helper folded into one libholoscan_core.so), the ping/bayer_demosaic/
+# format_converter operators and the UCX GXF extension Holoscan loads at start-up.
+#
+# Shared-library layout matters at runtime: libgxf_ucx_holoscan.so is dlopen()ed by
+# name by holoscan::core, so core must be a real shared object (one copy of its
+# statics) and the extension must be a direct link dependency of every application
+# (then the bare-name dlopen resolves against the already-loaded library).
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+
+package(default_visibility = ["//visibility:public"])
+
+HOLOSCAN_VERSION = "3.9.0"
+
+# Upstream's holoscan_security_flags (BuildSecurityFlags.cmake) minus -Werror.
+SECURITY_COPTS = [
+    "-fstack-protector-strong",
+    "-fstack-clash-protection",
+    "-Wformat=2",
+    "-Wformat-security",
+    "-D_FORTIFY_SOURCE=2",
+]
+
+SECURITY_LINKOPTS = [
+    "-Wl,-z,relro",
+    "-Wl,-z,now",
+]
+
+# ---------------------------------------------------------------------------
+# Public headers (include/holoscan/**) plus the header-only third-party
+# dependencies that appear in them (target_include_directories(core PUBLIC ...)).
+# ---------------------------------------------------------------------------
+cc_library(
+    name = "headers",
+    # include/holoscan/** (public API) and include/common/** (logger shim headers).
+    hdrs = glob(["include/**"]),
+    defines = ["FMT_HEADER_ONLY=1"],
+    includes = ["include"],
+    deps = [
+        "@cli11",
+        "@concurrentqueue",
+        "@cuda",
+        "@cuda//:cuda_runtime",
+        "@cuda//:cudart_headers",
+        "@cuda//:libcudacxx",
+        "@dlpack",
+        "@eigen",
+        "@fmt",
+        "@gxf//:app",
+        "@gxf//:core",
+        "@gxf//:cuda",
+        "@gxf//:rmm",
+        "@gxf//:serialization",
+        "@gxf//:std",
+        "@gxf//:ucx",
+        "@magic_enum",
+        "@nlohmann_json//:json",
+        "@nvtx3",
+        "@tl-expected",
+        "@ucx",
+        "@ucxx",
+        "@yaml-cpp",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# gRPC services used by the distributed app driver/worker (src/core/distributed).
+# ---------------------------------------------------------------------------
+# The .proto files import each other by bare name, so the import root is the proto
+# directory; generated headers are then included by bare name too (patch 0001).
+proto_library(
+    name = "distributed_protos",
+    srcs = glob(["src/core/distributed/proto/*.proto"]),
+    strip_import_prefix = "src/core/distributed/proto",
+)
+
+cc_proto_library(
+    name = "distributed_cc_protos",
+    deps = [":distributed_protos"],
+)
+
+cc_grpc_library(
+    name = "distributed_grpc",
+    srcs = [":distributed_protos"],
+    grpc_only = True,
+    deps = [":distributed_cc_protos"],
+)
+
+# ---------------------------------------------------------------------------
+# core/executors/gpu_resident/gr_cuda_controller.cu (upstream: static CUDA lib
+# with separable compilation).
+# ---------------------------------------------------------------------------
+cuda_library(
+    name = "gpu_resident_cuda",
+    srcs = ["src/core/executors/gpu_resident/gr_cuda_controller.cu"],
+    hdrs = glob(
+        ["src/core/executors/gpu_resident/*.cuh"],
+        allow_empty = True,
+    ),
+    copts = ["--diag-suppress=128"],
+    # With the hermetic (redistributable) toolkit `nvcc -dlink` cannot find the cudart
+    # headers its link stub needs; use rules_cuda's nvlink/fatbinary/bin2c device link,
+    # which compiles the stub with this target's include paths.
+    features = [
+        "-supports_compiler_device_link",
+        "supports_wrapper_device_link",
+    ],
+    includes = ["src"],
+    rdc = True,
+    deps = [
+        ":headers",
+        "@cuda//:crt_headers",
+        "@cuda//:libcudacxx",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# libholoscan_core.so — core + logger + profiler + spdlog_logger (src/CMakeLists.txt).
+# ---------------------------------------------------------------------------
+CORE_SRCS = glob(["src/core/**/*.cpp"]) + [
+    "src/common/logger/spdlog_logger.cpp",
+    "src/logger/logger.cpp",
+    "src/profiler/profiler.cpp",
+    "src/utils/cuda_stream_handler.cpp",
+    "src/utils/operator_runner.cpp",
+    "src/utils/cuda/buffer.cpp",
+]
+
+cc_library(
+    name = "core_impl",
+    srcs = CORE_SRCS + glob(
+        [
+            "src/core/**/*.hpp",
+            "src/core/**/*.h",
+            "src/common/**/*.hpp",
+            "src/common/**/*.h",
+            "src/logger/*.hpp",
+            "src/profiler/*.hpp",
+            "src/utils/**/*.hpp",
+        ],
+        allow_empty = True,
+    ),
+    copts = SECURITY_COPTS + [
+        "-Wno-unused-parameter",
+        "-Wno-deprecated-declarations",
+    ],
+    includes = ["src"],
+    linkopts = ["-ldl"],
+    local_defines = ["HOLOSCAN_LOG_ACTIVE_LEVEL=1"],
+    deps = [
+        ":distributed_grpc",
+        ":gpu_resident_cuda",
+        ":headers",
+        "@grpc//:grpc++",
+        "@grpc//:grpc++_reflection",
+        "@hwloc",
+        "@protobuf",
+        "@spdlog",
+        "@ucxx",
+    ],
+    alwayslink = True,
+)
+
+cc_binary(
+    name = "libholoscan_core.so",
+    linkopts = SECURITY_LINKOPTS + ["-Wl,-soname,libholoscan_core.so"],
+    linkshared = True,
+    deps = [":core_impl"],
+)
+
+cc_import(
+    name = "core_so",
+    shared_library = ":libholoscan_core.so",
+)
+
+# holoscan::core (and ::logger / ::profiler, folded in). Depends on every shared
+# library that must be present at runtime so the final executable links them all
+# directly (see the note at the top).
+cc_library(
+    name = "core",
+    deps = [
+        ":core_so",
+        ":headers",
+        "@rmm",
+        "@ucx",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# gxf_extensions/ucx → libgxf_ucx_holoscan.so (loaded by default by GXFExecutor).
+# ---------------------------------------------------------------------------
+cc_binary(
+    name = "libgxf_ucx_holoscan.so",
+    srcs = glob(
+        [
+            "gxf_extensions/ucx/*.cpp",
+            "gxf_extensions/ucx/*.hpp",
+        ],
+        allow_empty = True,
+    ),
+    copts = SECURITY_COPTS,
+    linkopts = SECURITY_LINKOPTS + ["-Wl,-soname,libgxf_ucx_holoscan.so"],
+    linkshared = True,
+    local_defines = ["HOLOSCAN_BUILD_VERSION=" + HOLOSCAN_VERSION],
+    deps = [
+        ":core",
+        "@gxf//:multimedia",
+        "@gxf//:serialization",
+        "@gxf//:std",
+        "@gxf//:ucx",
+        "@ucx",
+    ],
+)
+
+cc_import(
+    name = "gxf_ucx_holoscan_so",
+    shared_library = ":libgxf_ucx_holoscan.so",
+)
+
+# What applications should depend on: core plus the extension it loads at start-up.
+cc_library(
+    name = "holoscan",
+    deps = [
+        ":core",
+        ":gxf_ucx_holoscan_so",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Operators (static; each links the shared core).
+# ---------------------------------------------------------------------------
+[
+    cc_library(
+        name = "op_" + op,
+        srcs = ["src/operators/{}/{}.cpp".format(op, op)],
+        copts = SECURITY_COPTS,
+        deps = [":holoscan"],
+    )
+    for op in [
+        "ping_rx",
+        "ping_tx",
+        "ping_tensor_rx",
+        "ping_tensor_tx",
+    ]
+]
+
+cc_library(
+    name = "op_bayer_demosaic",
+    srcs = ["src/operators/bayer_demosaic/bayer_demosaic.cpp"],
+    copts = SECURITY_COPTS,
+    deps = [
+        ":holoscan",
+        "@cuda//:cuda_runtime",
+        "@cuda//:npp_headers",
+        "@cuda//:nppicc",
+    ],
+)
+
+cc_library(
+    name = "op_format_converter",
+    srcs = ["src/operators/format_converter/format_converter.cpp"],
+    copts = SECURITY_COPTS,
+    deps = [
+        ":holoscan",
+        "@cuda//:npp_headers",
+        "@cuda//:nppicc",
+        "@cuda//:nppidei",
+        "@cuda//:nppig",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Holoviz module (modules/holoviz) → libholoscan_viz.so, and the holoviz operator.
+# ---------------------------------------------------------------------------
+NVPRO = "modules/holoviz/thirdparty/nvpro_core"
+
+# Vendored subset of nvpro_core (thirdparty/nvpro_core/CMakeLists.txt).
+cc_library(
+    name = "nvpro_core",
+    srcs = [NVPRO + "/" + f for f in [
+        "nvh/cameramanipulator.cpp",
+        "nvh/nvprint.cpp",
+        "nvp/perproject_globals.cpp",
+        "nvvk/buffersuballocator_vk.cpp",
+        "nvvk/commands_vk.cpp",
+        "nvvk/context_vk.cpp",
+        "nvvk/debug_util_vk.cpp",
+        "nvvk/descriptorsets_vk.cpp",
+        "nvvk/error_vk.cpp",
+        "nvvk/extensions_vk.cpp",
+        "nvvk/images_vk.cpp",
+        "nvvk/memallocator_dedicated_vk.cpp",
+        "nvvk/memallocator_vk.cpp",
+        "nvvk/memorymanagement_vk.cpp",
+        "nvvk/nsight_aftermath_vk.cpp",
+        "nvvk/pipeline_vk.cpp",
+        "nvvk/resourceallocator_vk.cpp",
+        "nvvk/samplers_vk.cpp",
+        "nvvk/shadermodulemanager_vk.cpp",
+        "nvvk/stagingmemorymanager_vk.cpp",
+        "nvvk/swapchain_vk.cpp",
+    ]],
+    hdrs = glob(
+        [
+            NVPRO + "/nvh/*.hpp",
+            NVPRO + "/nvh/*.h",
+            NVPRO + "/nvmath/*.h",
+            NVPRO + "/nvmath/*.inl",
+            NVPRO + "/nvp/*.hpp",
+            NVPRO + "/nvp/*.h",
+            NVPRO + "/nvvk/*.hpp",
+            NVPRO + "/nvvk/*.h",
+        ],
+        allow_empty = True,
+    ),
+    copts = ["-w"],  # third-party code, not held to our warning bar
+    includes = [
+        NVPRO,
+        NVPRO + "/nvp",
+    ],
+    local_defines = [
+        "PROJECT_NAME=\\\"Holoviz\\\"",
+        "GLFW_CONTEXT_DEBUG=GLFW_OPENGL_DEBUG_CONTEXT",
+        "NVP_SUPPORTS_VULKANSDK",
+        "GLFW_INCLUDE_NONE",
+    ],
+    deps = [
+        "@glfw",
+        "@imgui//:imgui_backend",
+        "@vulkan_headers",
+    ],
+)
+
+VIZ = "modules/holoviz/src"
+
+# GLSL → SPIR-V headers, as nvpro_core's compile_glsl(HEADER ON) does:
+#   glslang -g --target-env vulkan1.2 --vn <file with '.'→'_'> -o <file>.h <file>
+SHADERS = [
+    "geometry_color_shader.glsl.vert",
+    "geometry_shader.glsl.frag",
+    "geometry_shader.glsl.vert",
+    "image_shader.glsl.frag",
+    "image_shader.glsl.vert",
+    "imgui_shader.glsl.frag",
+    "imgui_shader.glsl.vert",
+]
+
+[
+    genrule(
+        name = "spv_" + shader.replace(".", "_"),
+        srcs = [VIZ + "/vulkan/shaders/" + shader],
+        outs = [VIZ + "/vulkan/spv/" + shader + ".h"],
+        cmd = "$(execpath @glslang//:glslang_bin) -g --target-env vulkan1.2 --vn {var} -o $@ $<".format(
+            var = shader.replace(".", "_"),
+        ),
+        tools = ["@glslang//:glslang_bin"],
+    )
+    for shader in SHADERS
+]
+
+# fonts/Roboto-Bold.ttf → fonts/roboto_bold_ttf.hpp (GenHeaderFromBinaryFile.cmake).
+genrule(
+    name = "roboto_bold_ttf_hpp",
+    srcs = [VIZ + "/fonts/Roboto-Bold.ttf"],
+    outs = [VIZ + "/fonts/roboto_bold_ttf.hpp"],
+    cmd = "$(execpath @camera_fpga_dev//tools/workspace/holoscan:bin2hpp) $< $@ roboto_bold_ttf",
+    tools = ["@camera_fpga_dev//tools/workspace/holoscan:bin2hpp"],
+)
+
+# Public API headers of the viz library (installed as include/holoviz/*).
+cc_library(
+    name = "viz_headers",
+    hdrs = glob([VIZ + "/holoviz/*.hpp"]),
+    includes = [VIZ],
+    deps = ["@cuda"],  # holoviz.hpp uses CUDA driver types
+)
+
+cuda_library(
+    name = "viz_cuda",
+    srcs = [
+        VIZ + "/cuda/convert.cu",
+        VIZ + "/cuda/gen_depth_map.cu",
+        VIZ + "/cuda/gen_primitive_vertices.cu",
+    ],
+    hdrs = glob(
+        [
+            VIZ + "/cuda/*.hpp",
+            VIZ + "/util/*.hpp",
+        ],
+        allow_empty = True,
+    ),
+    copts = ["--diag-suppress=128"],
+    includes = [VIZ],
+    deps = [
+        ":viz_headers",
+        "@cuda",
+    ],
+)
+
+cc_library(
+    name = "viz_impl",
+    srcs = [VIZ + "/" + f for f in [
+        "context.cpp",
+        "exclusive_window.cpp",
+        "glfw_window.cpp",
+        "headless_window.cpp",
+        "holoviz.cpp",
+        "window.cpp",
+        "cuda/cuda_service.cpp",
+        "layers/geometry_layer.cpp",
+        "layers/image_layer.cpp",
+        "layers/im_gui_layer.cpp",
+        "layers/layer.cpp",
+        "vulkan/buffer.cpp",
+        "vulkan/format_util.cpp",
+        "vulkan/framebuffer_sequence.cpp",
+        "vulkan/resource.cpp",
+        "vulkan/texture.cpp",
+        "vulkan/vulkan_app.cpp",
+    ]] + glob(
+        [
+            VIZ + "/*.hpp",
+            VIZ + "/cuda/*.hpp",
+            VIZ + "/layers/*.hpp",
+            VIZ + "/util/*.hpp",
+            VIZ + "/vulkan/*.hpp",
+            VIZ + "/vulkan/shaders/*.hpp",
+        ],
+        allow_empty = True,
+    ) + [":spv_" + s.replace(".", "_") for s in SHADERS] + [":roboto_bold_ttf_hpp"],
+    copts = SECURITY_COPTS + ["-Wno-unused-parameter"],
+    includes = [VIZ],
+    # The Vulkan loader is part of the host graphics stack (docs/machines.md).
+    linkopts = ["-l:libvulkan.so.1"],
+    local_defines = [
+        "VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1",
+        "GLFW_INCLUDE_NONE",
+    ],
+    deps = [
+        ":core",  # holoscan::logger
+        ":nvpro_core",
+        ":viz_cuda",
+        ":viz_headers",
+        "@cuda",
+        "@glfw",
+        "@imgui",
+        "@imgui//:imgui_backend",
+        "@vulkan_headers",
+    ],
+    alwayslink = True,
+)
+
+cc_binary(
+    name = "libholoscan_viz.so",
+    additional_linker_inputs = [VIZ + "/export.map"],
+    linkopts = SECURITY_LINKOPTS + [
+        "-Wl,-soname,libholoscan_viz.so",
+        "-Wl,--version-script=$(execpath {}/export.map)".format(VIZ),
+    ],
+    linkshared = True,
+    deps = [":viz_impl"],
+)
+
+cc_import(
+    name = "viz_so",
+    shared_library = ":libholoscan_viz.so",
+)
+
+# holoscan::viz
+cc_library(
+    name = "viz",
+    deps = [
+        ":viz_headers",
+        ":viz_so",
+    ],
+)
+
+# holoscan::ops::holoviz
+cc_library(
+    name = "op_holoviz",
+    srcs = [
+        "src/operators/holoviz/buffer_info.cpp",
+        "src/operators/holoviz/conditions/first_pixel_out.cpp",
+        "src/operators/holoviz/conditions/present_done.cpp",
+        "src/operators/holoviz/holoviz.cpp",
+    ],
+    copts = SECURITY_COPTS,
+    deps = [
+        ":holoscan",
+        ":viz",
+        "@cuda//:cuda_runtime",
+        "@gxf//:multimedia",
+        "@magic_enum",
+    ],
+)

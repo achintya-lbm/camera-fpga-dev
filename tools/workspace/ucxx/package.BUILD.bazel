@@ -1,0 +1,20 @@
+# -*- mode: bazel -*-
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Static; linked privately into libholoscan_core.so (cpp/CMakeLists.txt: UCXX_ENABLE_RMM).
+cc_library(
+    name = "ucxx",
+    srcs = glob(["cpp/src/**/*.cpp"]),
+    hdrs = glob(["cpp/include/**"]),
+    defines = [
+        "UCXX_ENABLE_RMM",
+        "RMM_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LEVEL_INFO",
+    ],
+    includes = ["cpp/include"],
+    deps = [
+        "@rmm",
+        "@ucx",
+    ],
+)

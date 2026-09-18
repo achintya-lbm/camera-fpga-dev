@@ -1,0 +1,3 @@
+# Package marker so //tools/workspace/nvtx3:repository.bzl is loadable and the
+# package.BUILD.bazel file can be referenced as a label.
+exports_files(["package.BUILD.bazel"])

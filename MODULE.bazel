@@ -1,35 +1,72 @@
-"""camera-fpga-dev: Holoscan Sensor Bridge camera ingest on the Tauro DA322 (see DESIGN.md §11)."""
+"""camera-fpga-dev: Holoscan Sensor Bridge camera ingest on the Tauro DA322 (see DESIGN.md §11).
+
+Everything builds on the host with `bazel build //...`: the CUDA toolkit, the
+Holoscan SDK and all other third-party code are fetched by Bazel. The host only
+provides gcc-13, the NVIDIA driver and a few runtime .so packages
+(docs/machines.md).
+"""
 
 module(
     name = "camera_fpga_dev",
     version = "0.1.0",
+    bazel_compatibility = [">=8.0.1"],
 )
 
+# NOTE: Keep this list sorted.
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+
+bazel_dep(name = "buildifier_prebuilt", version = "10.0.1", dev_dependency = True)
+
+bazel_dep(name = "cli11", version = "2.5.0")
+bazel_dep(name = "concurrentqueue", version = "1.0.4")
+bazel_dep(name = "fmt", version = "11.2.0")
+bazel_dep(name = "glfw", version = "3.4.0.bcr.3")
+
+bazel_dep(name = "googletest", version = "1.18.0.bcr.1", dev_dependency = True)
+
+bazel_dep(name = "grpc", version = "1.84.0")
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1")
 bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "36.2")
 bazel_dep(name = "rules_cc", version = "0.2.25")
 bazel_dep(name = "rules_cuda", version = "0.3.0")
+single_version_override(
+    module_name = "rules_cuda",
+    patch_strip = 1,
+    patches = [
+        "//tools/workspace/rules_cuda/patches:0001-nvcc-wrapper-device-link-feature.patch",
+        "//tools/workspace/rules_cuda/patches:0002-wrapper-device-link-header-inputs.patch",
+    ],
+    version = "0.3.0",
+)
+
+bazel_dep(name = "rules_foreign_cc", version = "0.16.0")
 bazel_dep(name = "rules_python", version = "2.3.3")
 bazel_dep(name = "rules_shell", version = "0.8.0")
-bazel_dep(name = "googletest", version = "1.18.0.bcr.1")
+bazel_dep(name = "spdlog", version = "1.15.3")
+bazel_dep(name = "tl-expected", version = "1.1.0")
+bazel_dep(name = "vulkan_headers", version = "1.4.349")
+bazel_dep(name = "yaml-cpp", version = "0.8.0")
 
-# Dev-only tooling.
-bazel_dep(name = "buildifier_prebuilt", version = "10.0.1", dev_dependency = True)
+# compile_commands.json for clangd. Upstream hedronvision does not load on
+# Bazel 9; this fork does.
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 git_override(
     module_name = "hedron_compile_commands",
-    # Upstream hedronvision does not load on Bazel 9; this fork does.
     commit = "078ba7675c05bea2666c92d9a8abe200d8547655",
     remote = "https://github.com/helly25/bazel-compile-commands-extractor.git",
 )
 
-# --- CUDA ---------------------------------------------------------------------
-# Uses the toolkit found at $CUDA_PATH, `ptxas` on PATH, or /usr/local/cuda (the
-# dev container ships CUDA 13 there). Architectures are selected in .bazelrc.
+# --- CUDA (hermetic) ----------------------------------------------------------
+# rules_cuda downloads the CUDA redistributable, so machines without a system
+# CUDA install still compile .cu files. rules_cuda requires the toolkit repo to
+# be named `cuda`. Target architectures are selected in .bazelrc.
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
-cuda.toolkit(
-    name = "cuda",
-    toolkit_path = "",
+cuda.redist_json(
+    name = "cuda_redist",
+    version = "13.0.2",
 )
+cuda.toolkit(name = "cuda")
 use_repo(cuda, "cuda")
 
 # --- Python (tooling and analysis scripts only) -------------------------------
@@ -47,27 +84,26 @@ pip.parse(
 )
 use_repo(pip, "py_deps")
 
-# --- Prebuilt SDKs consumed from the dev container ----------------------------
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-
-# Holoscan SDK as installed by the holoscan-cuda-13 .deb inside the container.
-new_local_repository(
-    name = "holoscan_sdk",
-    build_file = "//third_party/holoscan:holoscan.BUILD",
-    path = "/opt/nvidia/holoscan",
+# --- Non-BCR dependencies (tools/workspace/<name>/repository.bzl) -------------
+camera_fpga_dev_repositories = use_extension(
+    "//tools/workspace:default.bzl",
+    "camera_fpga_dev_repositories",
 )
-
-http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
-# NVIDIA Video Codec SDK 13.0 headers (MIT) via FFmpeg's nv-codec-headers.
-# 13.0 is the newest API the R580 driver line supports (13.1 needs >= R610).
-http_archive(
-    name = "nv_codec_headers",
-    build_file = "//third_party/nv_codec_headers:BUILD.nvcodec",
-    sha256 = "c293161bd92dac53f2f8fab08abcd4f96773c3644a57b23c2260b4be2311ab2f",
-    strip_prefix = "nv-codec-headers-n13.0.19.1",
-    urls = ["https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n13.0.19.1.tar.gz"],
+use_repo(
+    camera_fpga_dev_repositories,
+    # NOTE: Keep these in alphabetical order.
+    "dlpack",
+    "eigen",
+    "glslang",
+    "gxf",
+    "holoscan_sdk",
+    "hwloc",
+    "imgui",
+    "magic_enum",
+    "nv_codec_headers",
+    "nvtx3",
+    "rapids_logger",
+    "rmm",
+    "ucx",
+    "ucxx",
 )
-
-# hololink (holoscan-sensor-bridge @ 2.5.0-PB6 + Tauro DA322 patch) is added in M2;
-# the patch already lives in //third_party/hololink/patches.

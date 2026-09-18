@@ -1,0 +1,70 @@
+# -*- mode: bazel -*-
+# rmm built from source: header-heavy library plus a small librmm.so (logger, error,
+# stream/device helpers). Mirrors cpp/CMakeLists.txt: PUBLIC define
+# LIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE, links cudart, CCCL, nvtx3, dl.
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Upstream generates these two headers at CMake configure time
+# (rapids_cmake_write_version_file and create_logger_macros(RMM "rmm::default_logger()")).
+genrule(
+    name = "version_config",
+    outs = ["cpp/include/rmm/version_config.hpp"],
+    cmd = """cat > $@ <<'EOF'
+#pragma once
+#define RMM_VERSION_MAJOR 25
+#define RMM_VERSION_MINOR 10
+#define RMM_VERSION_PATCH 0
+EOF""",
+)
+
+genrule(
+    name = "logger_macros",
+    srcs = ["@rapids_logger//:cmake/logger_macros.hpp.in"],
+    outs = ["cpp/include/rmm/logger_macros.hpp"],
+    cmd = "sed -e 's/@_RAPIDS_LOGGER_MACRO_PREFIX@/RMM/g' " +
+          "-e 's/@_RAPIDS_LOGGER_DEFAULT_LOGGER@/rmm::default_logger()/g' $< > $@",
+)
+
+cc_library(
+    name = "headers",
+    hdrs = glob(["cpp/include/**"]) + [
+        ":logger_macros",
+        ":version_config",
+    ],
+    defines = [
+        "LIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
+        "RMM_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LEVEL_INFO",
+    ],
+    includes = ["cpp/include"],
+    linkopts = ["-ldl"],
+    deps = [
+        "@cuda//:cuda_runtime",
+        "@cuda//:libcudacxx",
+        "@cuda//:thrust",
+        "@nvtx3",
+        "@rapids_logger",
+    ],
+)
+
+cc_binary(
+    name = "librmm.so",
+    srcs = glob(["cpp/src/*.cpp"]),
+    linkopts = ["-Wl,-soname,librmm.so"],
+    linkshared = True,
+    deps = [":headers"],
+)
+
+cc_import(
+    name = "rmm_so",
+    shared_library = ":librmm.so",
+)
+
+cc_library(
+    name = "rmm",
+    deps = [
+        ":headers",
+        ":rmm_so",
+    ],
+)

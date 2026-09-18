@@ -1,10 +1,26 @@
-# Build settings shared by every machine. Machine-specific overrides go in
-# .bazelrc.user (git-ignored); container cache paths are in tools/docker/container.bazelrc.
+# Build settings shared by every machine (dev box and test machine alike; see
+# docs/machines.md). Machine-specific overrides go in user.bazelrc (git-ignored).
 
-common --enable_platform_specific_config
+# Optimized builds by default; keep symbols for profiling.
+build -c opt
+build --strip=never
 
-build --cxxopt=-std=c++17 --host_cxxopt=-std=c++17
-build --cxxopt=-Wall
+# Bazel separates "target" config (--copt) from "host/exec" config
+# (--host_copt). We do not cross-compile, so always set both flavors together.
+build --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
+build --cxxopt=-Wall --host_cxxopt=-Wall
+
+# Pin the compiler (nvcc 13 accepts gcc <= 15; gcc-13 ships with Ubuntu 24.04).
+build --action_env=CC=/usr/bin/gcc-13
+build --action_env=CXX=/usr/bin/g++-13
+
+# Pin PATH so shells with different environments do not invalidate the cache.
+build --action_env=PATH=/usr/local/bin:/usr/bin:/bin
+build --host_action_env=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Using LD_LIBRARY_PATH is an anti-pattern; prevent it from leaking in.
+build --action_env=LD_LIBRARY_PATH=
+test --test_env=LD_LIBRARY_PATH=
 
 # CUDA: one entry per GPU architecture listed in docs/machines.md.
 build --@rules_cuda//cuda:archs=sm_89,sm_120
@@ -17,12 +33,26 @@ build --define=hololink_gpu_vram=on
 # Targets that need the DA322/cameras or Lattice Radiant never build by default.
 build --build_tag_filters=-requires-hw,-requires-radiant
 test --test_tag_filters=-requires-hw,-requires-radiant
-test --test_output=errors
-test --test_env=HOLOSCAN_LIB_PATH=/opt/nvidia/holoscan/lib
-test --test_env=NVIDIA_DRIVER_CAPABILITIES
-
 # `--config=nogpu` for machines/CI without an NVIDIA GPU.
 build:nogpu --build_tag_filters=-requires-hw,-requires-radiant,-requires-gpu
 test:nogpu --test_tag_filters=-requires-hw,-requires-radiant,-requires-gpu
 
-try-import %workspace%/.bazelrc.user
+# Tests: concise output, no HOME access, driver capability env passthrough.
+test --test_output=errors
+test --test_summary=terse
+test --test_env=HOME=/DO_NOT_READ_OR_WRITE_TO_HOME
+
+# Only our own warnings, not external ones.
+build --output_filter="^//"
+
+# Explicit __init__.py files only.
+build --incompatible_default_to_explicit_init_py
+
+# Persistent caches shared across workspaces on this machine (content-addressed;
+# safe to delete). Same locations as the orochi checkout, so CUDA redist
+# downloads are fetched once.
+build --disk_cache=~/.cache/bazel/disk-cache
+build --experimental_disk_cache_gc_max_size=100G
+common --repository_cache=~/.cache/bazel/repo-cache
+
+try-import %workspace%/user.bazelrc

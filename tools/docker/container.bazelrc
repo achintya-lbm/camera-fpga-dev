@@ -1,5 +1,0 @@
-# Loaded only inside the dev container (tools/dev.sh passes --bazelrc=...).
-# /var/cache/bazel is a named Docker volume so outputs and caches survive restarts.
-startup --output_user_root=/var/cache/bazel/out
-common --disk_cache=/var/cache/bazel/disk
-common --repository_cache=/var/cache/bazel/repo

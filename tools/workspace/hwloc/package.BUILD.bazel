@@ -1,0 +1,38 @@
+# -*- mode: bazel -*-
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+)
+
+# Static, minimal hwloc (no XML, PCI, GPU or udev back-ends), position independent
+# because it is linked into the libholoscan_core.so shared library.
+configure_make(
+    name = "hwloc",
+    args = ["-j8"],
+    configure_options = [
+        "--enable-static",
+        "--disable-shared",
+        "--disable-picky",
+        "--disable-cairo",
+        "--disable-libxml2",
+        "--disable-io",
+        "--disable-pci",
+        "--disable-opencl",
+        "--disable-cuda",
+        "--disable-nvml",
+        "--disable-rsmi",
+        "--disable-levelzero",
+        "--disable-gl",
+        "--disable-libudev",
+        "--disable-plugins",
+        "--disable-readme",
+        "--disable-doxygen",
+    ],
+    copts = ["-fPIC"],
+    lib_source = ":all_srcs",
+    out_static_libs = ["libhwloc.a"],
+)

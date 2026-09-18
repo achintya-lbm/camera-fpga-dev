@@ -1,0 +1,12 @@
+# -*- mode: bazel -*-
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Header-only (nvtx3::nvtx3-cpp). NVTX dlopen()s injection libraries at runtime.
+cc_library(
+    name = "nvtx3",
+    hdrs = glob(["include/**"]),
+    includes = ["include"],
+    linkopts = ["-ldl"],
+)

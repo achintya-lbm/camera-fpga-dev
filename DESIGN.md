@@ -1,6 +1,6 @@
 # DESIGN — Holoscan Sensor Bridge camera ingest on the Tauro DA322 with 4× FRAMOS FSM:GO IMX676
 
-Status: **M0 (skeleton, toolchain, encoder library) complete; M1 hardware bring-up next** (2026-09-18).
+Status: **M0 complete — native Bazel build, hermetic CUDA, Holoscan 3.9.0 built from source; M1 hardware bring-up next** (2026-09-18).
 Companion files: `TODO.md` (milestone checklists), `WORKING.md` (dated lab notebook),
 `docs/hardware/da322.md` (pin tables transcribed from the DA322 manual v1.6), `docs/machines.md`
 (the only place that records which computers we use and what they contain).
@@ -128,7 +128,7 @@ Power check: FSM:GO 640 mW + adapter regulator losses ≈ 0.8 W ≈ 240 mA from 
 
 Running this code against the DA322 needs a **Mellanox (NVIDIA ConnectX) NIC** for the RoCE receive
 path and a **compatible NVIDIA GPU** (CUDA, NVENC AV1, and for zero-copy receive GPUDirect RDMA).
-Building needs only Docker with the NVIDIA container toolkit. The exact requirements and the current
+Building needs only `bazelisk` and gcc-13: Bazel fetches CUDA and builds Holoscan from source. The exact requirements and the current
 machine inventory are kept in **`docs/machines.md`** and nowhere else; the rest of this document uses
 two roles: the *dev box* (builds, unit tests, emulator loopback tests) and the *test machine*
 (DA322, cameras, all RoCE and benchmark runs).
@@ -215,12 +215,12 @@ active, and the result per machine is recorded in `docs/machines.md`.
 | Component | Pin (phase 1) | Why |
 |---|---|---|
 | holoscan-sensor-bridge (hololink) | commit `6930609` (tag `2.5.0-PB6`) + Tauro patch | The vendor bitstream reports HSB IP v2511; stock HSB 2.7.0 enforces `MINIMUM_HSB_IP_VERSION = 0x2602` in `src/hololink/core/data_channel.cpp` and changed the data-plane register layout (`DP_PAGE_*`, `DP_MAX_BUFF`). The board-identity strategy for DA322 lives in the vendor patch. |
-| Holoscan SDK | **3.9.0** — the `HSDK_VERSION` in PB6's `docker/build.sh` | ABI parity with hololink operators (ADR-0001) |
-| Container base | **`nvcr.io/nvidia/clara-holoscan/holoscan:v3.9.0-cuda13`** (x86_64: Ubuntu 24.04, gcc 13.3, CUDA 13.0 at `/usr/local/cuda`, Python 3.12). CUDA 13 covers every GPU architecture in `docs/machines.md`; the image is multi-arch (amd64 + arm64) | build + run environment for everything host-side (ADR-0001) |
+| Holoscan SDK | **3.9.0**, the `HSDK_VERSION` in PB6's `docker/build.sh`, **built from source** by `tools/workspace/holoscan` (core, ping/bayer_demosaic/format_converter operators, UCX GXF extension; holoviz next). Only NVIDIA GXF 5.1.0 is consumed as a binary (no source exists) — ADR-0005 | ABI parity with hololink operators; no prebuilt SDK packages (ADR-0001) |
+| SDK packaging | No containers, no `/opt` installs. rules_cuda `cuda.redist_json` downloads CUDA 13.0.2; every other library is fetched as source by `tools/workspace/<name>/repository.bzl` and built with hand-written BUILD files (UCX and hwloc through rules_foreign_cc autotools). Host provides gcc-13, the NVIDIA driver and a few graphics runtime packages (`docs/machines.md`) | reproducible on every machine (ADR-0004, ADR-0005) |
 | NVIDIA driver | R570+ with the open kernel modules; per-machine versions in `docs/machines.md` | Video Codec SDK 13.0 API needs ≥ 570 (13.1 needs ≥ 610); DMA-BUF GPUDirect needs the open modules |
 | nv-codec-headers | FFmpeg/nv-codec-headers tag `n13.0.19.1` (MIT) | NVENC API 13.0 headers; `dlopen("libnvidia-encode.so.1")` at runtime |
-| Bazel | 9.2.0 (`.bazelversion`), fallback 8.8.0 | rules_cuda/rules_python/verilator presubmits cover 9.x |
-| rules | `rules_cc 0.2.25`, `rules_cuda 0.3.0`, `rules_python 2.3.3` (Py 3.12), `rules_shell 0.8.0`, `googletest 1.18.0.bcr.1` (older versions use removed native rules), `buildifier_prebuilt 10.0.1`, `hedron_compile_commands` = helly25 fork via `git_override` (upstream broken on Bazel 9); later: `verilator 5.046.bcr.5` (sim), optional `aspect_rules_lint`, optional `toolchains_llvm` | all bzlmod, all verified on Bazel 9.2.0 in M0 (ADR-0004) |
+| Bazel | **8.8.0** (`.bazelversion`, LTS; same line as orochi) | several BCR modules Holoscan needs (spdlog, yaml-cpp, magic_enum, cli11) still use native rules that Bazel 9 removed (ADR-0004) |
+| rules | `rules_cc 0.2.25`, `rules_cuda 0.3.0`, `rules_python 2.3.3` (Py 3.12), `rules_shell 0.8.0`, `rules_foreign_cc 0.16.0`, `googletest 1.18.0.bcr.1`, `buildifier_prebuilt 10.0.1`, `hedron_compile_commands` = helly25 fork via `git_override`; later: `verilator 5.046.bcr.5` (sim) | all bzlmod, verified on Bazel 8.8.0 |
 | Lattice Radiant (phase 3) | 2026.1 Linux (Ubuntu 22.04/24.04); LFCPNX-100 needs a **subscription** license (60-day eval available) | own FPGA build |
 | HSB (phase 3) | ≥ 2.7.x together with our own FPGA build on HSB IP 2606 | `hololink_module` device-driver model, current docs |
 
@@ -242,7 +242,7 @@ ImageProcessorOp    (hololink; optical black + histogram white balance) — opti
 BayerDemosaicOp     (Holoscan SDK, NPP; RGGB/… grid; RGBA uint16 with alpha)
 Rgba16ToP010Op      (ours, CUDA; RGBA16 → P010 or NV12, BT.709 limited range; per-plane pitch for NVENC)
 NvencAv1Op          (ours; NVENC session per camera; input = registered CUDA device buffers; async output thread)
-IvfWriterOp         (ours; IVF container per camera; optional raw .obu)
+IvfWriterOp         (ours; IVF file per camera; optional raw .obu)
 FrameStatsOp        (ours; consumes receiver metadata; per-second Gbps/fps/drops/PSN gaps/latency; CSV + summary)
 FrameCheckOp        (ours; CRC of payload vs metadata crc, expected bytes_written) — used in bandwidth_test
 ```
@@ -365,12 +365,11 @@ camera-fpga-dev/
 │   ├── bandwidth.md     budget + matrix + measured results
 │   ├── bringup/         host_setup.md (ConnectX, sysctl, PTP), flashing.md (JTAG, OTA), first_light.md
 │   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path, ADR-0003 AV1/IVF, ADR-0004 Bazel 9
-├── third_party/
+├── tools/workspace/     one directory per external dependency: repository.bzl (pinned fetch) + package.BUILD.bazel; default.bzl = module extension; archive.bzl helper
 │   ├── holoscan/        holoscan.BUILD → /opt/nvidia/holoscan (new_local_repository)
 │   ├── hololink/        hololink.BUILD + patches/0001-taurotech-da322-v1.2.1-pb.patch, 0002-… (ours)
 │   └── nv_codec_headers/BUILD (http_archive n13.0.19.1)
 ├── tools/
-│   ├── docker/          Dockerfile.dev, dev.sh (build/test/run/shell; persistent bazel cache volume; RDMA/GPU flags)
 │   ├── host/            sysctl.d/52-hololink-rmem_max.conf, net_setup.sh, ptp4l/phc2sys units, hsb-ptp.conf, connectx_check.sh
 │   ├── bazel/           radiant.bzl (radiant_bitstream + @radiant repo rule), verilator.bzl, cocotb.bzl
 │   └── py/              pyproject.toml, requirements.lock.txt (rules_python uv lock), analysis/ (CSV → plots)
@@ -404,66 +403,60 @@ camera-fpga-dev/
 `MODULE.bazel` sketch:
 
 ```starlark
-module(name = "camera_fpga_dev")
+module(name = "camera_fpga_dev", bazel_compatibility = [">=8.0.1"])
 bazel_dep(name = "rules_cc", version = "0.2.25")
 bazel_dep(name = "rules_cuda", version = "0.3.0")
 bazel_dep(name = "rules_python", version = "2.3.3")
-bazel_dep(name = "rules_shell", version = "0.8.0")
-bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "buildifier_prebuilt", version = "10.0.1", dev_dependency = True)
-bazel_dep(name = "verilator", version = "5.046.bcr.5")
-bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
-git_override(module_name = "hedron_compile_commands",
-             remote = "https://github.com/helly25/bazel-compile-commands-extractor.git", commit = "<pin>")
+bazel_dep(name = "rules_foreign_cc", version = "0.16.0")     # UCX, hwloc (autotools)
+bazel_dep(name = "grpc", version = "1.84.0")                 # Holoscan distributed services
+# ... fmt, spdlog, yaml-cpp, magic_enum, cli11, tl-expected, concurrentqueue, nlohmann_json,
+#     glfw, vulkan_headers, googletest, buildifier_prebuilt, hedron_compile_commands (helly25 fork)
 
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
-cuda.toolkit(name = "cuda", toolkit_path = "")          # /usr/local/cuda inside the dev container
+cuda.redist_json(name = "cuda_redist", version = "13.0.2")  # hermetic toolkit download (no system CUDA)
+cuda.toolkit(name = "cuda")
 use_repo(cuda, "cuda")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.12", is_default = True)
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-pip.parse(hub_name = "pypi", python_version = "3.12", requirements_lock = "//tools/py:requirements.lock.txt")
-use_repo(pip, "pypi")
+pip.parse(hub_name = "py_deps", python_version = "3.12", requirements_lock = "//tools/py:requirements.lock.txt")
+use_repo(pip, "py_deps")
 
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-new_local_repository(name = "holoscan_sdk", path = "/opt/nvidia/holoscan",
-                     build_file = "//third_party/holoscan:holoscan.BUILD")
-
-http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-http_archive(name = "hololink", urls = ["https://github.com/nvidia-holoscan/holoscan-sensor-bridge/archive/6930609c4ce264ec7e2936dd1f5813323fccb08e.tar.gz"],
-             strip_prefix = "holoscan-sensor-bridge-6930609c4ce264ec7e2936dd1f5813323fccb08e",
-             patches = ["//third_party/hololink/patches:0001-taurotech-da322-v1.2.1-pb.patch"], patch_args = ["-p1"],
-             build_file = "//third_party/hololink:hololink.BUILD")
-http_archive(name = "nv_codec_headers", urls = ["https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n13.0.19.1.tar.gz"],
-             strip_prefix = "nv-codec-headers-n13.0.19.1", build_file = "//third_party/nv_codec_headers:BUILD.nvcodec")
+# Non-BCR dependencies: one directory per dep under tools/workspace/ (repository.bzl + package.BUILD.bazel).
+camera_fpga_dev_repositories = use_extension("//tools/workspace:default.bzl", "camera_fpga_dev_repositories")
+use_repo(camera_fpga_dev_repositories, "dlpack", "eigen", "gxf", "holoscan_sdk", "hwloc",
+         "nv_codec_headers", "nvtx3", "rapids_logger", "rmm", "ucx", "ucxx")   # + "hololink" in M2
 ```
 
-`.bazelrc` essentials: `build --cxxopt=-std=c++17`, `build --@rules_cuda//cuda:archs=<list>` (one
-entry per GPU architecture in `docs/machines.md`), `build --define=hololink_gpu_vram=on` (GPUDirect
-receive; hololink falls back to pinned host memory at runtime on GPUs without it),
-`test --test_env=HOLOSCAN_LIB_PATH=/opt/nvidia/holoscan/lib`, `common --disk_cache=/var/cache/bazel/disk
---repository_cache=/var/cache/bazel/repo`, `startup --output_user_root=/var/cache/bazel/out`,
-tags `requires-gpu` / `requires-hw` / `requires-radiant` excluded from the default `bazel test //...` on CI.
+`.bazelrc` essentials: `-c opt`, C++20, `--action_env=CC=/usr/bin/gcc-13`, pinned `PATH`,
+`--@rules_cuda//cuda:archs=<list>` (one entry per GPU architecture in `docs/machines.md`),
+`--define=hololink_gpu_vram=on` (GPUDirect receive; hololink falls back to pinned host memory at runtime),
+disk/repository caches under `~/.cache/bazel/`, and tags `requires-gpu` / `requires-hw` / `requires-radiant`
+excluded from the default `bazel test //...` where appropriate (`--config=nogpu`).
 
 Wrappers:
 
-- `third_party/holoscan/holoscan.BUILD`: versioned `libholoscan_*.so.3` and `libgxf_*.so` listed as `srcs`;
-  include roots `include`, `include/3rdparty`, `include/gxf`, `include/3rdparty/ucx`; the SDK's CMake compile
-  definitions; `-Wl,-rpath,/opt/nvidia/holoscan/lib`. Targets `:holoscan`, `:ops_holoviz`, `:ops_bayer_demosaic`,
-  `:ops_format_converter` (NPP via `@cuda//:nppi*`, libcu++ via `@cuda//:libcudacxx`).
-  Use Holoscan's fmt/spdlog/yaml-cpp copies; never add competing `bazel_dep`s for those.
-- `third_party/hololink/hololink.BUILD`: `core` (libcuda + fmt header-only), `sensors`,
+- `tools/workspace/holoscan/package.BUILD.bazel`: Holoscan v3.9.0 from source — `libholoscan_core.so` (core +
+  logger + profiler + GPU-resident CUDA helper), gRPC codegen for the distributed protos, the
+  `libgxf_ucx_holoscan.so` extension, operators as static libraries; `:holoscan` is what apps depend on.
+  Build-system-only patches live in `tools/workspace/holoscan/patches/`.
+- `tools/workspace/gxf`: NVIDIA GXF 5.1.0 binary package, one `cc_library` per component mirroring its
+  DT_NEEDED graph; `tools/workspace/{ucx,hwloc}`: autotools via rules_foreign_cc; `tools/workspace/{rmm,
+  rapids_logger,ucxx,nvtx3,eigen,dlpack}`: hand-written BUILD files (rmm/rapids_logger as shared libs
+  because GXF's rmm extension links them by SONAME). BCR modules: fmt, spdlog, yaml-cpp, magic_enum,
+  cli11, tl-expected, concurrentqueue, nlohmann_json, grpc/protobuf, glfw, vulkan_headers.
+  Every shared library needed at runtime is a direct link dependency of the executable, so bare-name
+  `dlopen`s (GXF extensions) resolve against already-loaded libraries without search-path hacks.
+- `tools/workspace/hololink/package.BUILD.bazel` (M2): `core` (libcuda + fmt header-only), `sensors`,
   `operators:{roce_receiver (libibverbs), linux_receiver, csi_to_bayer (NVRTC), image_processor,
   packed_format_converter}`; kernels are NVRTC strings, so no `.cu` compilation is needed there.
-- `third_party/nv_codec_headers`: header-only `cc_library` + `-ldl`.
+- `tools/workspace/nv_codec_headers`: header-only `cc_library` + `-ldl`.
 
-Dev container (`tools/docker/Dockerfile.dev`): `FROM nvcr.io/nvidia/clara-holoscan/holoscan:v3.9.0-cuda13`,
-add bazelisk, `git git-lfs libibverbs-dev rdma-core ibverbs-providers linuxptp ffmpeg`.
-`tools/dev.sh` runs it with `--net host --gpus all --runtime nvidia --ipc host --ulimit memlock=-1
---cap-add IPC_LOCK --cap-add SYS_NICE --device /dev/infiniband/... -e NVIDIA_DRIVER_CAPABILITIES=all`,
-mounts the repo at `/workspace` and a named volume at `/var/cache/bazel`, keeps one long-lived container
-and `docker exec`s into it so the Bazel server stays warm.
+Host builds: plain `bazel build //...` on any machine meeting `docs/machines.md`. `.bazelrc` pins
+`CC=/usr/bin/gcc-13`, `PATH`, `-c opt`, C++20, the CUDA archs, and shared caches under `~/.cache/bazel/`
+(same locations as the orochi checkout, so CUDA redistributables are downloaded once). Per-machine
+overrides go in `user.bazelrc`.
 
 FPGA rules (`tools/bazel/radiant.bzl`): repository rule `@radiant` resolves `$RADIANT_HOME`
 (fails with a clear message if absent); `radiant_bitstream(name, top, srcs, pdc, sdc, ip, device)`
@@ -523,7 +516,7 @@ bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
 
 | # | Milestone | Exit criterion |
 |---|---|---|
-| M0 | Repo skeleton, docs, Bazel toolchain, dev container, NVENC/IVF library + smoke test | `tools/dev.sh build //... && tools/dev.sh test //...` green on the dev box; hello apps run on the dev box GPU |
+| M0 | Repo skeleton, docs, Bazel toolchain (hermetic CUDA, Holoscan from source), NVENC/IVF library + smoke test | `bazel build //... && bazel test //...` green on the dev box; hello apps run on the dev box GPU |
 | M1 | Hardware bring-up with the vendor stack (Python IMX676 driver in the vendor container) | 4 live cameras at a low-bandwidth mode; validated mode tables |
 | M2 | Bazel C++ stack: hololink wrap, DA322 board layer, IMX676 C++ driver, `hsbctl`, `cam_player`, `bandwidth_test` | Bazel-built player shows 1 and 4 cameras over RoCE; bandwidth CSV |
 | M3 | NVENC AV1 path (`Rgba16ToP010Op`, `NvencAv1Op`, `IvfWriter`, `cam_encode`, emulator regression) | A1 encodes in real time; IVF decodes; C1 encode measured |

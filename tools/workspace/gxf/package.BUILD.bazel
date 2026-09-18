@@ -1,0 +1,111 @@
+# -*- mode: bazel -*-
+# Targets for @gxf (NVIDIA GXF 5.1.0 binary package). One cc_library per GXF
+# component; deps mirror each library's DT_NEEDED and lib/cmake/GXF/*Targets.cmake.
+# Every component's headers live under include/ (gxf/<component>/..., common/...).
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# GXF headers include rmm, UCX, dlpack, yaml-cpp, magic_enum and nvtx headers.
+cc_library(
+    name = "headers",
+    hdrs = glob(["include/**"]),
+    includes = ["include"],
+    deps = [
+        "@cuda//:cudart_headers",
+        "@dlpack",
+        "@magic_enum",
+        "@nvtx3",
+        "@rmm//:headers",
+        "@ucx",
+        "@yaml-cpp",
+    ],
+)
+
+cc_library(
+    name = "logger",
+    srcs = ["lib/gxf/logger/libgxf_logger.so"],
+    deps = [":headers"],
+)
+
+cc_library(
+    name = "core",
+    srcs = ["lib/gxf/core/libgxf_core.so"],
+    linkopts = ["-lpthread"],
+    deps = [
+        ":headers",
+        ":logger",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "std",
+    srcs = ["lib/gxf/std/libgxf_std.so"],
+    deps = [
+        ":core",
+        "@cuda//:libcudacxx",  # CCCL::CCCL in the CMake interface
+    ],
+)
+
+cc_library(
+    name = "cuda",
+    srcs = ["lib/gxf/cuda/libgxf_cuda.so"],
+    deps = [":std"],
+)
+
+cc_library(
+    name = "serialization",
+    srcs = ["lib/gxf/serialization/libgxf_serialization.so"],
+    deps = [":std"],
+)
+
+cc_library(
+    name = "multimedia",
+    srcs = ["lib/gxf/multimedia/libgxf_multimedia.so"],
+    deps = [":std"],
+)
+
+# libgxf_rmm.so needs librmm.so and librapids_logger.so (built from source by
+# //tools/workspace/rmm).
+cc_library(
+    name = "rmm",
+    srcs = ["lib/gxf/rmm/libgxf_rmm.so"],
+    deps = [
+        ":cuda",
+        ":std",
+        "@rmm",
+    ],
+)
+
+# libgxf_ucx.so needs libucp.so.0 / libucs.so.0 (built from source by
+# //tools/workspace/ucx). libgxf_app.so links libgxf_ucx.so, so every Holoscan
+# application transitively needs UCX at load time.
+cc_library(
+    name = "ucx",
+    srcs = ["lib/gxf/ucx/libgxf_ucx.so"],
+    deps = [
+        ":multimedia",
+        ":serialization",
+        ":std",
+        "@ucx",
+    ],
+)
+
+cc_library(
+    name = "app",
+    srcs = ["lib/gxf/app/libgxf_app.so"],
+    deps = [
+        ":std",
+        ":ucx",
+    ],
+)
+
+# The `gxe` executable and the extension manifest, for tooling/tests.
+filegroup(
+    name = "gxe",
+    srcs = [
+        "bin/gxe",
+        "bin/manifest.yaml",
+    ],
+)

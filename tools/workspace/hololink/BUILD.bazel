@@ -1,0 +1,3 @@
+# hololink (holoscan-sensor-bridge) is vendored in milestone M2; the Tauro DA322
+# patch it will apply already lives in patches/.
+exports_files(glob(["patches/*.patch"]))

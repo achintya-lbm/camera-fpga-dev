@@ -1,0 +1,46 @@
+# -*- mode: bazel -*-
+# Mirrors modules/holoviz/thirdparty/imgui/CMakeLists.txt: holoviz_imgui (core widgets)
+# and imgui_backend (GLFW + Vulkan back-ends).
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "imgui",
+    srcs = [
+        "imgui.cpp",
+        "imgui_draw.cpp",
+        "imgui_tables.cpp",
+        "imgui_widgets.cpp",
+        "misc/cpp/imgui_stdlib.cpp",
+    ],
+    hdrs = [
+        "imconfig.h",
+        "imgui.h",
+        "imgui_internal.h",
+        "imstb_rectpack.h",
+        "imstb_textedit.h",
+        "imstb_truetype.h",
+        "misc/cpp/imgui_stdlib.h",
+    ],
+    includes = ["."],
+)
+
+cc_library(
+    name = "imgui_backend",
+    srcs = [
+        "backends/imgui_impl_glfw.cpp",
+        "backends/imgui_impl_vulkan.cpp",
+    ],
+    hdrs = [
+        "backends/imgui_impl_glfw.h",
+        "backends/imgui_impl_vulkan.h",
+    ],
+    includes = ["."],
+    local_defines = ["GLFW_INCLUDE_NONE"],
+    deps = [
+        ":imgui",
+        "@glfw",
+        "@vulkan_headers",
+    ],
+)

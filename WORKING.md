@@ -5,6 +5,60 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-18 — Build redirection: no containers, Holoscan from source
+
+**Trigger** (user): "why is there a dev container in place? Can we just not compile on our own computer
+or on the test machine? bazel can pull the cuda libraries just fine" and "I'd like to bring in holoscan as
+a source dependency, not as a precompiled deb or anything". Model: `~/robotics/orochi/robot_software/tools/workspace`.
+
+**Done**
+- Removed `tools/docker` and `tools/dev.sh`; builds run natively with `bazel`. Adopted the orochi layout:
+  `tools/workspace/<dep>/{repository.bzl,package.BUILD.bazel}` + `default.bzl` module extension +
+  `archive.bzl` helper; `.bazelrc` in the orochi style (`-c opt`, gcc-13 pin, PATH pin, shared caches).
+- CUDA: rules_cuda `cuda.redist_json` 13.0.2 (hermetic; verified `hello_cuda` runs on the host GPU).
+- Tried the Holoscan `.deb` route briefly, then dropped it for the source build the user asked for.
+- Holoscan v3.9.0 source build (`tools/workspace/holoscan`): `libholoscan_core.so` (134 core .cpp +
+  logger/profiler/spdlog_logger + gpu_resident `.cu`), gRPC codegen for the 7 distributed protos,
+  `libgxf_ucx_holoscan.so` extension, ping/bayer_demosaic/format_converter operators; holoviz section
+  drafted (glslang tool, imgui pin, vendored nvpro_core, export map). One build-system patch (generated
+  proto include paths).
+- Dependency layer, all built from source on the host: UCX 1.19.0 and hwloc 2.9.0 (rules_foreign_cc
+  autotools), rmm 25.10.00 + rapids-logger 0.2.0 (shared libs, SONAMEs required by GXF), ucxx 0.44.00,
+  NVTX 3.3.0, Eigen 3.4.0, dlpack 1.0, magic_enum 0.9.3, imgui @f3373780 (+ Holoscan imconfig patch),
+  glslang 15.4.0 (CMake tool). BCR: fmt, spdlog, yaml-cpp, cli11, tl-expected, concurrentqueue,
+  nlohmann_json, grpc 1.84/protobuf, glfw (builds X11/Wayland client libs from source), vulkan_headers.
+- GXF 5.1.0 (`gxf_5.1.0_20251114_0652b7b15_holoscan-sdk-cu13_x86_64.tar.gz`, sha256 pinned): the one
+  binary dependency, accepted by the user (ADR-0005). Its libs live in `lib/gxf/<component>/`.
+
+**Findings / gotchas**
+- Bazel 9.2 cannot load several BCR modules (spdlog, yaml-cpp, magic_enum, cli11 use removed native
+  rules; the autoload flag did not help) → pinned Bazel 8.8.0 (ADR-0004 updated).
+- rules_cuda 0.3.0 redist toolkit: `@cuda//:cuda_headers` references missing `culibos/cufile/nvidia_fs`
+  header targets → depend on `@cuda//:cudart_headers` / `:npp_headers` / `:libcudacxx` instead.
+- GXF `libgxf_app.so` links `libgxf_ucx.so` → UCX is required at runtime even for single-process apps;
+  `libgxf_rmm.so` needs `librmm.so`/`librapids_logger.so` by SONAME. Holoscan dlopen()s
+  `libgxf_std.so`… and `libgxf_ucx_holoscan.so` by bare name first → linking every shared lib directly
+  into the executable makes those loads resolve against already-loaded objects.
+- magic_enum ≥0.9.6 moved headers under `include/magic_enum/`; GXF includes `<magic_enum.hpp>` → 0.9.3.
+- Upstream tarballs may ship their own `BUILD.bazel` (magic_enum) → `archive.bzl` deletes them first.
+- Holoscan's protos import each other by bare name → proto import root = the proto dir; generated
+  headers included by bare name (patch 0001).
+
+**Result**
+- Native `bazel build //...` and `bazel test //...` green (ivf_test, nvenc_smoke_test on the dev GPU,
+  bandwidth_test); `hello_cuda` and `hello_holoscan` run on the host against the source-built Holoscan
+  (`libholoscan_core.so` + GXF + UCX/rmm from Bazel). `@holoscan_sdk//:viz` and `:op_holoviz` build
+  (glslang compiled the shaders; GLFW's X11/Wayland deps came from BCR sources).
+- rules_cuda 0.3.0 needed two small patches for `rdc = True` with the redistributable toolkit
+  (`tools/workspace/rules_cuda/patches`): expose a wrapper device-link feature for nvcc, and give the
+  link-stub compile its header inputs. Candidates for upstreaming.
+
+**Next**
+- M1 on the test machine; M2: `tools/workspace/hololink` (2.5.0-PB6 + Tauro patch) on top of this Holoscan.
+- A runtime check of holoviz (needs a display) when the first camera player exists.
+
+---
+
 ## 2026-09-18 — M0 done: Bazel skeleton, dev container, encoder library
 
 **Done**

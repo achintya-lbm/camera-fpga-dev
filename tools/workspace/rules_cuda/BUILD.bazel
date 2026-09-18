@@ -1,0 +1,2 @@
+# rules_cuda comes from the Bazel Central Registry (MODULE.bazel); this directory only
+# holds the patch applied through single_version_override. See patches/README.md.

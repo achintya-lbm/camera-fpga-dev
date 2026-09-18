@@ -1,0 +1,13 @@
+# Package marker so //tools/workspace/holoscan:repository.bzl is loadable and the
+# package.BUILD.bazel file and patches can be referenced as labels.
+load("@rules_python//python:defs.bzl", "py_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["package.BUILD.bazel"])
+
+# Build-time helper used by @holoscan_sdk's holoviz targets (font embedding).
+py_binary(
+    name = "bin2hpp",
+    srcs = ["bin2hpp.py"],
+)

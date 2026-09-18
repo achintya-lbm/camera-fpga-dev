@@ -1,0 +1,4 @@
+# External dependency definitions live in the per-dependency subdirectories
+# (repository.bzl + package.BUILD.bazel); default.bzl wires them into the
+# camera_fpga_dev_repositories module extension used by MODULE.bazel.
+exports_files(["mirrors.bzl"])

@@ -3,14 +3,14 @@
 Applies to the *test machine* in `docs/machines.md`. Everything here is idempotent; the scripts in
 `tools/host/` (milestone M1) will automate it.
 
-## 1. Driver, container toolkit, RDMA stack
+## 1. Driver, compiler, RDMA stack
 
 ```bash
 nvidia-smi                                   # driver present
 modinfo nvidia | grep -i license             # open kernel modules needed for DMA-BUF GPUDirect
 sudo apt-get install -y rdma-core ibverbs-utils libibverbs1 linuxptp ethtool git git-lfs
 ibv_devinfo                                  # ConnectX visible, port state, link layer Ethernet
-docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi   # container GPU access
+sudo apt-get install -y gcc-13 g++-13 make automake autoconf libtool-bin libvulkan1 libibverbs-dev   # build prerequisites
 ```
 
 ## 2. Network to the DA322
@@ -50,13 +50,12 @@ Until the unit files exist: `sudo phc2sys -c $IF -s CLOCK_REALTIME -O 0 -S 0.000
 Pin hololink receiver threads with `HOLOLINK_AFFINITY=<core>` or the `receiver_affinity` operator
 parameter; optionally isolate those cores with `isolcpus=` on the kernel command line.
 
-## 5. Dev container
+## 5. Build
 
 ```bash
 git clone <this repo> && cd camera-fpga-dev && git lfs pull
-tools/dev.sh up            # builds camera-fpga-dev:dev from the Holoscan base image
-tools/dev.sh build //...
-tools/dev.sh test //...
+bazel build //...          # first run fetches CUDA 13.0.2 and builds Holoscan and its deps from source
+bazel test //...
 ```
 
 Record the machine facts asked for in `docs/machines.md` once this works.

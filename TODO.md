@@ -6,20 +6,19 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 ## M0 — Repo skeleton, docs, toolchain (dev box, no hardware)
 - [x] DESIGN.md, TODO.md, WORKING.md, docs/hardware/da322.md (pin tables), compression/README.md placeholder
 - [x] `docs/machines.md` — requirements + machine inventory; the only place hardware specifics are recorded
-- [ ] `.bazelversion` (9.2.0), `MODULE.bazel`, `.bazelrc`, root `BUILD.bazel`, `.bazelignore`, `.gitattributes` (git-lfs for `*.bit`, `*.pdf`, large patches)
-- [ ] Decide the container base: PB6-compatible HSDK tag with a CUDA variant that supports every arch in `docs/machines.md` (Blackwell needs CUDA ≥ 12.8 → `cuda13` image), or newest HSDK 4.x `cuda13` + API patches
-- [ ] `tools/docker/Dockerfile.dev` (chosen Holoscan base + bazelisk + rdma-core + linuxptp + git-lfs + libnpp-dev + ffmpeg)
-- [ ] `tools/dev.sh` (build/test/run/shell; long-lived container; bazel cache volume; GPU + RDMA flags)
-- [ ] `third_party/holoscan/holoscan.BUILD` (new_local_repository → /opt/nvidia/holoscan) — verify `ls /opt/nvidia/holoscan/{include,lib}` layout inside the container first
-- [ ] `third_party/nv_codec_headers` (http_archive n13.0.19.1, header-only + `-ldl`)
-- [ ] `third_party/hololink` (http_archive @ `6930609` + vendor patch + `hololink.BUILD` for core/sensors/operators) — may slip to M2
-- [ ] `apps/hello_cuda` (rules_cuda, prints device name), `apps/hello_holoscan` (2-operator pipeline)
-- [ ] `hsb/encode`: `nvenc_session` (dlopen, version check, AV1 session, CUDA devptr registration), `ivf_writer`; unit tests; `nvenc_smoke_test` (requires-gpu) decodable by ffmpeg
-- [ ] Import vendor assets: `fpga/bitstreams/vendor/fpga_cpnx_da322_3454_2511.bit`, `fpga/bitstreams/manifests/manifest_da322.yaml`, `third_party/hololink/patches/0001-taurotech-da322-v1.2.1-pb.patch`
-- [ ] `docs/bringup/host_setup.md`, `docs/bringup/flashing.md`, `docs/bandwidth.md` (matrix from DESIGN §4.3, results empty)
-- [ ] `tools/py`: pyproject + uv lock via rules_python `lock`; `tools/py/analysis` skeleton
-- [ ] buildifier + compile_commands (helly25 fork) targets
-- [ ] Exit: `tools/dev.sh build //... && tools/dev.sh test //...` green; hello apps run on the dev box GPU
+- [x] `.bazelversion` (8.8.0), `MODULE.bazel`, `.bazelrc`, root `BUILD.bazel`, `.bazelignore`, `.gitattributes` (git-lfs for `*.bit`, `*.pdf`)
+- [x] Toolchain decided: no containers, no prebuilt SDK packages; hermetic CUDA 13.0.2 (rules_cuda redist), Holoscan 3.9.0 built from source, GXF 5.1.0 the only binary — ADR-0001/0004/0005
+- [x] `tools/workspace/holoscan` source build: core + ping/bayer_demosaic/format_converter ops + UCX GXF extension (`:holoscan`), holoviz module (`:viz`) + `op_holoviz` (glslang tool, imgui pin, vendored nvpro_core, GLFW/Vulkan headers from BCR)
+- [x] `tools/workspace/{gxf,ucx,hwloc,rmm,rapids_logger,ucxx,nvtx3,eigen,dlpack,magic_enum,imgui,glslang}` dependency rules build natively; rules_cuda device-link patches
+- [x] `tools/workspace/nv_codec_headers` (n13.0.19.1, header-only + `-ldl`)
+- [ ] `tools/workspace/hololink` (repository.bzl @ `6930609` + vendor patch + `package.BUILD.bazel` for core/sensors/operators) — M2
+- [x] `apps/hello_cuda` (rules_cuda, prints device name), `apps/hello_holoscan` (2-operator pipeline)
+- [x] `hsb/encode`: `nvenc_session` (dlopen, version check, AV1/HEVC session, CUDA devptr registration), `ivf` writer/reader; unit tests; `nvenc_smoke_test` (requires-gpu) verified with ffprobe
+- [x] Import vendor assets: `fpga/bitstreams/vendor/fpga_cpnx_da322_3454_2511.bit` (LFS), `tools/workspace/hololink/patches/0001-taurotech-da322-v1.2.1-pb.patch`; manifest generation documented in `fpga/bitstreams/README.md` (vendor tool, not hand-written)
+- [x] `docs/bringup/host_setup.md`, `docs/bringup/flashing.md`, `docs/bandwidth.md` (matrix, results empty), `docs/decisions/ADR-0001..0005`, `README.md`
+- [x] `tools/py`: pyproject + uv-generated hashed lock; `analysis/bandwidth.py` (budget formulas) + test
+- [x] buildifier + compile_commands (helly25 fork) targets
+- [x] Exit: `bazel build //... && bazel test //...` green on the host (3 tests); hello apps run on the dev box GPU against the source-built Holoscan (2026-09-18)
 
 ## M1 — Hardware bring-up with the vendor stack (test machine, no Bazel)
 - [ ] Host: static IP on the ConnectX port (192.168.0.101/24; board 192.168.0.2), `rmem_max=31326208`, `ethtool -G rx 4096`, ptp4l + phc2sys units (`scripts/hsb-ptp.conf`), `ibv_devinfo` OK, RoCE v2 enabled
@@ -35,7 +34,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Exit: stable video on 4 ports at a low-bandwidth mode; `docs/hardware/imx676_modes.md` written
 
 ## M2 — Bazel C++ stack
-- [ ] `third_party/hololink` overlay builds core + sensors + operators (roce_receiver, linux_receiver, csi_to_bayer, image_processor, packed_format_converter) against container Holoscan; `HOLOLINK_ROCE_USE_GPU_VRAM` as Bazel setting
+- [ ] `tools/workspace/hololink` overlay builds core + sensors + operators (roce_receiver, linux_receiver, csi_to_bayer, image_processor, packed_format_converter) against container Holoscan; `HOLOLINK_ROCE_USE_GPU_VRAM` as Bazel setting
 - [ ] `hsb/board/da322`: `da322_regs.hpp`, `Da322Board` (configure_port lanes/dt, dt status, port↔sensor↔i2c map, enumeration/UUID check)
 - [ ] `hsb/sensors/imx676`: `Tca6408`, `NativeImx676Sensor : CameraSensor`, mode tables ported from M1; unit tests for csi_length/start_byte and mode sanity
 - [ ] `hsb/cli/hsbctl`: enumerate | rd | wr | i2c | lanes | dt | ptp
@@ -74,7 +73,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] `tools/bazel/radiant.bzl` (`@radiant` repo rule, `radiant_bitstream`), `fpga/radiant/build.tcl`
 - [ ] cocotb/Verilator tests for `csi_dt_filter`, `test_pattern_gen`
 - [ ] JTAG programming runbook (HW-USBN-2B + Tag-Connect); OTA via manifest afterwards
-- [ ] Host migration: HSB ≥ 2.7 pin, HSDK 4.x container, `taurotech_da322` hololink_module driver (model: `taurotech_da326`)
+- [ ] Host migration: HSB ≥ 2.7 pin, Holoscan SDK 4.x source pin, `taurotech_da322` hololink_module driver (model: `taurotech_da326`)
 - [ ] Row E1 (pattern generator saturating 10G)
 - [ ] `fpga/boards/custom_v1/` pin plan; DESIGN §16 expanded into a board requirements doc
 

@@ -1,0 +1,22 @@
+--- a/cuda/private/toolchain_configs/nvcc.bzl
++++ b/cuda/private/toolchain_configs/nvcc.bzl
+@@ -133,6 +133,11 @@
+ 
+     supports_compiler_device_link_feature = feature(name = "supports_compiler_device_link")
+ 
++    # Opt-in alternative to `nvcc -dlink`: nvlink + fatbinary + bin2c, then the link stub is
++    # compiled by the cc toolchain with the target's include paths. Needed with the
++    # redistributable toolkit, where nvcc's own include path lacks the crt/cudart headers.
++    supports_wrapper_device_link_feature = feature(name = "supports_wrapper_device_link")
++
+     cuda_device_link_action = action_config(
+         action_name = ACTION_NAMES.device_link,
+         flag_sets = [
+@@ -619,6 +624,7 @@
+         pic_feature,
+         host_compiler_feature,
+         supports_compiler_device_link_feature,
++        supports_wrapper_device_link_feature,
+         include_paths_feature,
+         external_include_paths_feature,
+         dbg_feature,

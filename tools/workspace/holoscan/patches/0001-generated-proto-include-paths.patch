@@ -1,0 +1,60 @@
+diff -ru holoscan-sdk-3.9.0/src/core/distributed/app_driver/client.cpp patched/src/core/distributed/app_driver/client.cpp
+--- a/src/core/distributed/app_driver/client.cpp	2025-12-01 13:44:03.000000000 -0500
++++ b/src/core/distributed/app_driver/client.cpp	2026-09-18 17:55:56.637521123 -0400
+@@ -23,7 +23,7 @@
+ #include <string>
+ #include <vector>
+ 
+-#include "../generated/error_code.pb.h"
++#include "error_code.pb.h"
+ #include "holoscan/core/app_worker.hpp"
+ #include "holoscan/core/fragment.hpp"
+ #include "holoscan/logger/logger.hpp"
+diff -ru holoscan-sdk-3.9.0/src/core/distributed/app_driver/client.hpp patched/src/core/distributed/app_driver/client.hpp
+--- a/src/core/distributed/app_driver/client.hpp	2025-12-01 13:44:03.000000000 -0500
++++ b/src/core/distributed/app_driver/client.hpp	2026-09-18 17:55:56.637462935 -0400
+@@ -24,7 +24,7 @@
+ #include <string>
+ #include <vector>
+ 
+-#include "../generated/app_driver.grpc.pb.h"
++#include "app_driver.grpc.pb.h"
+ #include "holoscan/core/graph.hpp"
+ #include "holoscan/core/system/cpu_info.hpp"
+ #include "holoscan/core/system/gpu_info.hpp"
+diff -ru holoscan-sdk-3.9.0/src/core/distributed/app_driver/service_impl.hpp patched/src/core/distributed/app_driver/service_impl.hpp
+--- a/src/core/distributed/app_driver/service_impl.hpp	2025-12-01 13:44:03.000000000 -0500
++++ b/src/core/distributed/app_driver/service_impl.hpp	2026-09-18 17:55:56.637298807 -0400
+@@ -25,7 +25,7 @@
+ #include <string>
+ #include <vector>
+ 
+-#include "../generated/app_driver.grpc.pb.h"
++#include "app_driver.grpc.pb.h"
+ 
+ // Forward declarations
+ namespace holoscan {}
+diff -ru holoscan-sdk-3.9.0/src/core/distributed/app_worker/client.hpp patched/src/core/distributed/app_worker/client.hpp
+--- a/src/core/distributed/app_worker/client.hpp	2025-12-01 13:44:03.000000000 -0500
++++ b/src/core/distributed/app_worker/client.hpp	2026-09-18 17:55:56.637588945 -0400
+@@ -25,7 +25,7 @@
+ #include <unordered_map>
+ #include <vector>
+ 
+-#include "../generated/app_worker.grpc.pb.h"
++#include "app_worker.grpc.pb.h"
+ 
+ #include "holoscan/core/app_driver.hpp"
+ #include "holoscan/core/distributed/common/network_constants.hpp"
+diff -ru holoscan-sdk-3.9.0/src/core/distributed/app_worker/service_impl.hpp patched/src/core/distributed/app_worker/service_impl.hpp
+--- a/src/core/distributed/app_worker/service_impl.hpp	2025-12-01 13:44:03.000000000 -0500
++++ b/src/core/distributed/app_worker/service_impl.hpp	2026-09-18 17:55:56.637403425 -0400
+@@ -25,7 +25,7 @@
+ #include <unordered_map>
+ #include <vector>
+ 
+-#include "../generated/app_worker.grpc.pb.h"
++#include "app_worker.grpc.pb.h"
+ 
+ namespace holoscan {
+ 

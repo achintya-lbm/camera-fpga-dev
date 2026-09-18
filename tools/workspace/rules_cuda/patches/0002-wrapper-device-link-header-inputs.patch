@@ -1,0 +1,11 @@
+--- a/cuda/private/actions/dlink.bzl
++++ b/cuda/private/actions/dlink.bzl
+@@ -206,6 +206,8 @@
+         # this is useless
+         cuda_archs_info = common.cuda_archs_info,
+         headers = [fatbin_h, register_h],
++        # The stub includes toolkit headers (crt/host_defines.h ...); make them action inputs.
++        transitive_headers = [common.headers],
+         defines = [
+             # Silence warning about including internal header.
+             "__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__",

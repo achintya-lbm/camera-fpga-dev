@@ -7,7 +7,7 @@ Two paths. Both use files from `fpga/bitstreams/` (`git lfs pull` first).
 Works when the board already runs a Hololink-capable image and enumerates.
 
 ```bash
-# inside the vendor-patched hololink tree (third_party/hololink/README.md)
+# inside the vendor-patched hololink tree (tools/workspace/hololink/README.md)
 cd scripts
 python3 generate_manifest.py --manifest manifest_da322.yaml --version 2511 \
     --fpga-uuid 2b6485ba-a2c4-4b58-aee2-b4d5e623927e \
@@ -37,6 +37,6 @@ programs any device; building a CertusPro-NX bitstream needs the subscription li
 ## Verify
 
 ```bash
-tools/dev.sh run //hsb/cli:hsbctl -- enumerate          # M2; until then: vendor `tools/enumerate`
+bazel run //hsb/cli:hsbctl -- enumerate          # M2; until then: vendor `tools/enumerate`
 ```
 Expect the DA322 UUID/board-id and `hsb_ip_version` 0x2511 for the vendor image.

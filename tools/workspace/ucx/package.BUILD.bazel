@@ -1,0 +1,49 @@
+# -*- mode: bazel -*-
+# UCX built from source with autotools via rules_foreign_cc. Configure flags follow
+# Holoscan's Dockerfile (HPCX-style release build) minus the transports we do not
+# need on the camera host (InfiniBand verbs, CUDA, XPMEM, Java/Go bindings).
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+)
+
+configure_make(
+    name = "ucx",
+    args = ["-j8"],
+    configure_in_place = True,
+    configure_options = [
+        "--disable-logging",
+        "--disable-debug",
+        "--disable-assertions",
+        "--disable-params-check",
+        "--enable-mt",
+        "--enable-cma",
+        "--enable-shared",
+        "--disable-static",
+        "--disable-numa",
+        "--disable-doxygen-doc",
+        "--without-java",
+        "--without-go",
+        "--without-xpmem",
+        "--without-cuda",
+        "--without-verbs",
+        "--without-rdmacm",
+        "--without-knem",
+        "--without-rocm",
+        "--without-ze",
+        "--without-fuse3",
+    ],
+    lib_source = ":all_srcs",
+    out_data_dirs = ["lib/ucx"],  # transport modules dlopen()ed by libuct at runtime
+    out_shared_libs = [
+        "libucp.so.0",
+        "libucs.so.0",
+        "libucs_signal.so.0",
+        "libuct.so.0",
+        "libucm.so.0",
+    ],
+)

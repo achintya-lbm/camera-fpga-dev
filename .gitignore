@@ -1,6 +1,6 @@
 # Bazel
 /bazel-*
-/.bazelrc.user
+/user.bazelrc
 /compile_commands.json
 /external
 /.cache

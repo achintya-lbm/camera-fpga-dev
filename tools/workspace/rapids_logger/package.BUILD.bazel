@@ -1,0 +1,40 @@
+# -*- mode: bazel -*-
+# librapids_logger.so built from source. The SONAME must be exactly
+# "librapids_logger.so" because the prebuilt GXF rmm extension links it by that name.
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Template consumed by dependents' logger_macros.hpp generation (rmm, ucxx).
+exports_files(["cmake/logger_macros.hpp.in"])
+
+cc_library(
+    name = "headers",
+    hdrs = glob(["include/rapids_logger/*"]),
+    includes = ["include"],
+)
+
+cc_binary(
+    name = "librapids_logger.so",
+    srcs = ["src/logger.cpp"],
+    linkopts = ["-Wl,-soname,librapids_logger.so"],
+    linkshared = True,
+    deps = [
+        ":headers",
+        "@fmt",
+        "@spdlog",
+    ],
+)
+
+cc_import(
+    name = "rapids_logger_so",
+    shared_library = ":librapids_logger.so",
+)
+
+cc_library(
+    name = "rapids_logger",
+    deps = [
+        ":headers",
+        ":rapids_logger_so",
+    ],
+)
