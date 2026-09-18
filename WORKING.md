@@ -5,6 +5,35 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-18 — M0 done: Bazel skeleton, dev container, encoder library
+
+**Done**
+- Committed the docs; created `MODULE.bazel`/`.bazelrc`/`BUILD.bazel`, `tools/dev.sh` + `Dockerfile.dev`,
+  `third_party/{holoscan,nv_codec_headers,hololink/patches}`, `apps/hello_cuda`, `apps/hello_holoscan`,
+  `hsb/encode` (IVF writer/reader, `NvencSession`, GPU smoke test), `tools/py/analysis/bandwidth.py`,
+  runbooks (`docs/bringup/*`), `docs/bandwidth.md`, ADR-0001..0004, `README.md`. Vendor bitstream and
+  patch imported (bitstream via git-lfs).
+- Container base: `holoscan:v3.9.0-cuda13` — PB6's `HSDK_VERSION` is 3.9.0 and the `-cuda13` tag exists
+  for amd64 (Ubuntu 24.04, gcc 13.3, CUDA 13.0, nvcc present). No HSDK 4.x needed.
+- `tools/dev.sh build //...` and `test //...` green in the container: `ivf_test`, `nvenc_smoke_test`
+  (30 synthetic P010 frames → AV1 → IVF, ffprobe decodes 30 frames on the dev box GPU), `bandwidth_test`.
+  `hello_cuda` and `hello_holoscan` run. `refresh_compile_commands` (helly25 fork) works on Bazel 9.2.
+
+**Findings / gotchas**
+- Bazel 9: `googletest` must be ≥ 1.18.0.bcr.1 (older BUILD files call removed native rules); pip hub
+  name `pypi` is reserved by rules_python 2.3 (renamed to `py_deps`).
+- Holoscan wrapper needs include roots `include`, `include/3rdparty`, `include/gxf`, `include/3rdparty/ucx`
+  and the CMake defines (`LIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE` etc.); CUDA 13 moved libcu++ to
+  `include/cccl` → depend on `@cuda//:libcudacxx` and `@cuda//:thrust` (rules_cuda handles the path).
+- Radiant: user will use the free license for now; per Lattice's table CertusPro-NX bitstream generation
+  needs the subscription — only blocks M6, noted in `fpga/README.md`.
+
+**Next**
+- M1 on the test machine: host setup, vendor container, enumerate DA322, first light with one IMX676.
+- M2 in parallel on the dev box: `third_party/hololink` Bazel overlay (core + operators) against this SDK.
+
+---
+
 ## 2026-09-18 (later) — Machine inventory consolidated
 
 - User clarified: all hardware testing happens on `roadkill0` (SSH `walden-lab@roadkill0`), which has a

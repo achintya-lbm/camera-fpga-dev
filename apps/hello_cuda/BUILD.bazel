@@ -1,0 +1,18 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+
+cuda_library(
+    name = "kernels",
+    srcs = ["kernels.cu"],
+    hdrs = ["kernels.hpp"],
+)
+
+# Toolchain smoke test: compiles a kernel for every arch in .bazelrc and runs it.
+cc_binary(
+    name = "hello_cuda",
+    srcs = ["main.cc"],
+    deps = [
+        ":kernels",
+        "@cuda//:cuda_runtime",
+    ],
+)

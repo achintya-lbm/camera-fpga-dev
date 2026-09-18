@@ -1,0 +1,29 @@
+v1.2.1-PB:
+  * Added demo setup script
+  * Fixed hololink_channel naming issue in ar0234 player
+
+v1.2.1:
+  * Fixed '--sensor' argument handling in AR0234 FuSa player application
+
+v1.2.0:
+  * Added FuSa CoE and Linux CoE applications for supported cameras
+  * Updated HSB to v2.5.0-PB6 [6930609] of holoscan-sensor-bridge repo
+  * Cleanup and refactoring in example applications
+
+v1.1.3:
+  * Added automatic resolution detection for X1300 HDMI-to-CSI bridge
+
+v1.1.2:
+  * Updated FPGA firmware to v2511
+  * General cleanup and fixup in example applications
+
+v1.1.1:
+  * Added program_taurotech_da322 tool
+
+v1.1.0:
+  * Added support for AGX Thor
+  * Updated holoscan-sensor-bridge from 2.3.0 to 2.5.0
+  * Added multi camera player applicaiton
+
+v1.0.0:
+  * Initial Release

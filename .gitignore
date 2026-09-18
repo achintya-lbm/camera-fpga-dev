@@ -1,0 +1,23 @@
+# Bazel
+/bazel-*
+/.bazelrc.user
+/compile_commands.json
+/external
+/.cache
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Captures and measurements (large)
+/captures/
+*.ivf
+*.obu
+*.h265

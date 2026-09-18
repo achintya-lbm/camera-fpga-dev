@@ -1,0 +1,33 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "pyproject.toml",
+    "requirements.lock.txt",
+])
+
+# Regenerate the lock on the host (uv installed):
+#   uv pip compile tools/py/pyproject.toml --python-version 3.12 --generate-hashes \
+#       -o tools/py/requirements.lock.txt
+py_library(
+    name = "analysis",
+    srcs = [
+        "analysis/__init__.py",
+        "analysis/bandwidth.py",
+    ],
+    imports = ["."],
+    deps = [
+        "@py_deps//numpy",
+        "@py_deps//pyyaml",
+    ],
+)
+
+py_test(
+    name = "bandwidth_test",
+    size = "small",
+    srcs = ["analysis/bandwidth_test.py"],
+    imports = ["."],
+    main = "analysis/bandwidth_test.py",
+    deps = [":analysis"],
+)

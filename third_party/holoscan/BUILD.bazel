@@ -1,0 +1,2 @@
+# Marker package: holoscan.BUILD is the BUILD file for @holoscan_sdk (MODULE.bazel).
+exports_files(["holoscan.BUILD"])

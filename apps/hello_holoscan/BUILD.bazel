@@ -1,0 +1,9 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+# Toolchain smoke test for the Holoscan SDK wrapper (@holoscan_sdk): two custom
+# operators exchanging integers for 10 ticks.
+cc_binary(
+    name = "hello_holoscan",
+    srcs = ["main.cc"],
+    deps = ["@holoscan_sdk//:holoscan"],
+)

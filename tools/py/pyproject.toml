@@ -1,0 +1,9 @@
+[project]
+name = "camera-fpga-dev-tools"
+version = "0.1.0"
+description = "Analysis and tooling scripts for camera-fpga-dev (Bazel builds these via rules_python)"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "pyyaml>=6.0",
+]

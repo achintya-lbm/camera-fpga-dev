@@ -1,0 +1,3 @@
+# Marker package: the BUILD file used for the @nv_codec_headers repository is
+# BUILD.nvcodec (see MODULE.bazel).
+exports_files(["BUILD.nvcodec"])

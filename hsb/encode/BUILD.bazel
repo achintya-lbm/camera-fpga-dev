@@ -1,0 +1,49 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "ivf",
+    srcs = ["ivf.cc"],
+    hdrs = ["ivf.hpp"],
+)
+
+cc_test(
+    name = "ivf_test",
+    size = "small",
+    srcs = ["ivf_test.cc"],
+    deps = [
+        ":ivf",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# NVENC wrapper. Only headers from nv-codec-headers are needed at build time;
+# libnvidia-encode.so.1 is dlopen()ed at runtime (provided by the driver).
+cc_library(
+    name = "nvenc_session",
+    srcs = ["nvenc_session.cc"],
+    hdrs = ["nvenc_session.hpp"],
+    linkopts = ["-ldl"],
+    deps = [
+        "@cuda",
+        "@nv_codec_headers//:ffnvcodec",
+    ],
+)
+
+cc_test(
+    name = "nvenc_smoke_test",
+    size = "medium",
+    srcs = ["nvenc_smoke_test.cc"],
+    tags = [
+        "local",
+        "no-sandbox",
+        "requires-gpu",
+    ],
+    deps = [
+        ":ivf",
+        ":nvenc_session",
+        "@cuda",
+        "@googletest//:gtest_main",
+    ],
+)

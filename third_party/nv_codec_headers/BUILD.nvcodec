@@ -1,0 +1,12 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Header-only. dynlink_loader.h dlopen()s libnvidia-encode.so.1 / libcuda.so.1 at
+# runtime, so no driver library is linked; only -ldl is needed.
+cc_library(
+    name = "ffnvcodec",
+    hdrs = glob(["include/ffnvcodec/*.h"]),
+    includes = ["include"],
+    linkopts = ["-ldl"],
+)

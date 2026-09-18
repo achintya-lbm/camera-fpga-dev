@@ -1,6 +1,6 @@
 # DESIGN — Holoscan Sensor Bridge camera ingest on the Tauro DA322 with 4× FRAMOS FSM:GO IMX676
 
-Status: **planning complete, implementation not started** (2026-09-18).
+Status: **M0 (skeleton, toolchain, encoder library) complete; M1 hardware bring-up next** (2026-09-18).
 Companion files: `TODO.md` (milestone checklists), `WORKING.md` (dated lab notebook),
 `docs/hardware/da322.md` (pin tables transcribed from the DA322 manual v1.6), `docs/machines.md`
 (the only place that records which computers we use and what they contain).
@@ -215,12 +215,12 @@ active, and the result per machine is recorded in `docs/machines.md`.
 | Component | Pin (phase 1) | Why |
 |---|---|---|
 | holoscan-sensor-bridge (hololink) | commit `6930609` (tag `2.5.0-PB6`) + Tauro patch | The vendor bitstream reports HSB IP v2511; stock HSB 2.7.0 enforces `MINIMUM_HSB_IP_VERSION = 0x2602` in `src/hololink/core/data_channel.cpp` and changed the data-plane register layout (`DP_PAGE_*`, `DP_MAX_BUFF`). The board-identity strategy for DA322 lives in the vendor patch. |
-| Holoscan SDK | version required by the PB6 `docker/build.sh` (`find_package(holoscan 3.6)` at that commit) | ABI parity with hololink operators |
-| Container base | `nvcr.io/nvidia/clara-holoscan/holoscan:<that tag>-<cuda variant>`; the CUDA variant must support every GPU architecture in `docs/machines.md` (Blackwell-class GPUs need CUDA ≥ 12.8, so prefer a `cuda13` image). If the PB6-compatible HSDK has no such image, build hololink PB6 against the newest HSDK 4.x `cuda13` image and patch API differences — decide in M0 | build + run environment for everything host-side |
+| Holoscan SDK | **3.9.0** — the `HSDK_VERSION` in PB6's `docker/build.sh` | ABI parity with hololink operators (ADR-0001) |
+| Container base | **`nvcr.io/nvidia/clara-holoscan/holoscan:v3.9.0-cuda13`** (x86_64: Ubuntu 24.04, gcc 13.3, CUDA 13.0 at `/usr/local/cuda`, Python 3.12). CUDA 13 covers every GPU architecture in `docs/machines.md`; the image is multi-arch (amd64 + arm64) | build + run environment for everything host-side (ADR-0001) |
 | NVIDIA driver | R570+ with the open kernel modules; per-machine versions in `docs/machines.md` | Video Codec SDK 13.0 API needs ≥ 570 (13.1 needs ≥ 610); DMA-BUF GPUDirect needs the open modules |
 | nv-codec-headers | FFmpeg/nv-codec-headers tag `n13.0.19.1` (MIT) | NVENC API 13.0 headers; `dlopen("libnvidia-encode.so.1")` at runtime |
 | Bazel | 9.2.0 (`.bazelversion`), fallback 8.8.0 | rules_cuda/rules_python/verilator presubmits cover 9.x |
-| rules | `rules_cc 0.2.25`, `rules_cuda 0.3.0`, `rules_python 2.3.3` (Py 3.12), `rules_shell 0.8.0`, `buildifier_prebuilt 10.0.1`, `verilator 5.046.bcr.5`, `hedron_compile_commands` = helly25 fork via `git_override` (upstream broken on Bazel 9), optional `aspect_rules_lint 2.9.0`, optional `toolchains_llvm 1.9.1` with `stdlib = dynamic-stdc++` | all bzlmod, all tested on Bazel 9 |
+| rules | `rules_cc 0.2.25`, `rules_cuda 0.3.0`, `rules_python 2.3.3` (Py 3.12), `rules_shell 0.8.0`, `googletest 1.18.0.bcr.1` (older versions use removed native rules), `buildifier_prebuilt 10.0.1`, `hedron_compile_commands` = helly25 fork via `git_override` (upstream broken on Bazel 9); later: `verilator 5.046.bcr.5` (sim), optional `aspect_rules_lint`, optional `toolchains_llvm` | all bzlmod, all verified on Bazel 9.2.0 in M0 (ADR-0004) |
 | Lattice Radiant (phase 3) | 2026.1 Linux (Ubuntu 22.04/24.04); LFCPNX-100 needs a **subscription** license (60-day eval available) | own FPGA build |
 | HSB (phase 3) | ≥ 2.7.x together with our own FPGA build on HSB IP 2606 | `hololink_module` device-driver model, current docs |
 
@@ -364,7 +364,7 @@ camera-fpga-dev/
 │   ├── hardware/        da322.md (pins, registers), fsmgo_imx676_p22.md, imx676_modes.md, cabling_power.md
 │   ├── bandwidth.md     budget + matrix + measured results
 │   ├── bringup/         host_setup.md (ConnectX, sysctl, PTP), flashing.md (JTAG, OTA), first_light.md
-│   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path (GPUDirect vs pinned host), ADR-0003 AV1/IVF, ADR-0004 Bazel 9
+│   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path, ADR-0003 AV1/IVF, ADR-0004 Bazel 9
 ├── third_party/
 │   ├── holoscan/        holoscan.BUILD → /opt/nvidia/holoscan (new_local_repository)
 │   ├── hololink/        hololink.BUILD + patches/0001-taurotech-da322-v1.2.1-pb.patch, 0002-… (ours)
@@ -448,16 +448,18 @@ tags `requires-gpu` / `requires-hw` / `requires-radiant` excluded from the defau
 
 Wrappers:
 
-- `third_party/holoscan/holoscan.BUILD`: `cc_import` per `libholoscan_*.so` / `libgxf_*.so`, `cc_library
-  holoscan` with `includes = ["include"]`, `linkopts = ["-Wl,--no-as-needed", ..., "-Wl,-rpath,/opt/nvidia/holoscan/lib"]`.
+- `third_party/holoscan/holoscan.BUILD`: versioned `libholoscan_*.so.3` and `libgxf_*.so` listed as `srcs`;
+  include roots `include`, `include/3rdparty`, `include/gxf`, `include/3rdparty/ucx`; the SDK's CMake compile
+  definitions; `-Wl,-rpath,/opt/nvidia/holoscan/lib`. Targets `:holoscan`, `:ops_holoviz`, `:ops_bayer_demosaic`,
+  `:ops_format_converter` (NPP via `@cuda//:nppi*`, libcu++ via `@cuda//:libcudacxx`).
   Use Holoscan's fmt/spdlog/yaml-cpp copies; never add competing `bazel_dep`s for those.
 - `third_party/hololink/hololink.BUILD`: `core` (libcuda + fmt header-only), `sensors`,
   `operators:{roce_receiver (libibverbs), linux_receiver, csi_to_bayer (NVRTC), image_processor,
   packed_format_converter}`; kernels are NVRTC strings, so no `.cu` compilation is needed there.
 - `third_party/nv_codec_headers`: header-only `cc_library` + `-ldl`.
 
-Dev container (`tools/docker/Dockerfile.dev`): `FROM nvcr.io/nvidia/clara-holoscan/holoscan:<tag>-dgpu`,
-add bazelisk, `libibverbs-dev rdma-core ibverbs-providers linuxptp git git-lfs libnpp-dev ffmpeg`.
+Dev container (`tools/docker/Dockerfile.dev`): `FROM nvcr.io/nvidia/clara-holoscan/holoscan:v3.9.0-cuda13`,
+add bazelisk, `git git-lfs libibverbs-dev rdma-core ibverbs-providers linuxptp ffmpeg`.
 `tools/dev.sh` runs it with `--net host --gpus all --runtime nvidia --ipc host --ulimit memlock=-1
 --cap-add IPC_LOCK --cap-add SYS_NICE --device /dev/infiniband/... -e NVIDIA_DRIVER_CAPABILITIES=all`,
 mounts the repo at `/workspace` and a named volume at `/var/cache/bazel`, keeps one long-lived container
