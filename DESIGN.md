@@ -1,0 +1,593 @@
+# DESIGN — Holoscan Sensor Bridge camera ingest on the Tauro DA322 with 4× FRAMOS FSM:GO IMX676
+
+Status: **planning complete, implementation not started** (2026-09-18).
+Companion files: `TODO.md` (milestone checklists), `WORKING.md` (dated lab notebook),
+`docs/hardware/da322.md` (pin tables transcribed from the DA322 manual v1.6), `docs/machines.md`
+(the only place that records which computers we use and what they contain).
+
+---
+
+## 1. Purpose and scope
+
+Build one Bazel monorepo that contains everything needed to develop, build and test an NVIDIA
+Holoscan Sensor Bridge (HSB) camera-ingest system end to end:
+
+| Layer | What | Where in repo |
+|---|---|---|
+| Sensors | 4× FRAMOS FSM:GO IMX676C (Sony STARVIS 2, 3552×3552, RAW10/RAW12) on FRAMOS FPA-A/P22 22-pin adapters | `docs/hardware/`, `hsb/sensors/imx676/` |
+| FPGA | Tauro Technologies DA322 Holoscan MIPI Adapter (Lattice CertusPro-NX LFCPNX-100-9CBG256I, 4× MIPI CSI-2 4-lane, 10G SFP+, PTP); later a custom board around the same FPGA | `fpga/` |
+| Link | 10 GbE (SFP+, RoCE v2 UDP data plane, ECB UDP control plane, PTP) plus a 1 GbE test case | `docs/bandwidth.md` |
+| Host | x86_64 Linux host with a **Mellanox (NVIDIA ConnectX) NIC and a compatible NVIDIA GPU** (requirements: `docs/machines.md`): C++/CUDA Holoscan app receiving 1–4 streams and encoding them with NVENC (AV1) without CPU pixel copies | `hsb/`, `apps/` |
+| Tooling | Bazel (bzlmod) driving CUDA, C++, Python, Verilator/cocotb and Lattice Radiant | `MODULE.bazel`, `tools/` |
+
+Goals, in order:
+
+1. One camera at maximum resolution and frame rate.
+2. Multiple cameras at lower resolution / frame rate, saturating the 10G link.
+3. A "hypothetical 1G link" saturation test.
+4. Later: JPEG XS-like compression on the FPGA with GPU decode — **TODO only**, not designed here.
+
+Non-goals for now: Jetson/DGX Spark builds, RTP/SRT streaming, ISP quality tuning, multi-camera
+hardware sync (stretch goal, see TODO).
+
+---
+
+## 2. System overview
+
+```
+FSM:GO IMX676 ×4 ─P22 adapter─ 22-pin FFC ─► DA322 (CertusPro-NX)                                   Test host (x86_64)
+  CSI-2 RAW10/12, 4 lanes ≤1.5 Gbps/lane      soft D-PHY RX ×4 ─► CSI data-type filter ─► HSB IP ─► 10G MAC/PCS ─SFP+─► ConnectX NIC
+  I2C 0x1A (sensor), 0x20 (TCA6408)  ◄─────── I2C controller, bus 1+k                                       │ RoCE v2 UC RDMA WRITE (UDP 12288 → 4791)
+  XVS/XHS (optional sync)            ◄─────── MFP GPIO                                                      ▼
+                                              PTP 1588 slave  ◄───────────────────────────────────── ptp4l master + phc2sys
+                                              ECB control (UDP 8192) ◄───────────────────────────── Hololink control plane
+                                                                                                             │
+                                                                                     GPU frame buffer via GPUDirect RDMA (DMA-BUF);
+                                                                                     pinned-host buffer + cuMemcpyHtoDAsync fallback on GPUs without it
+                                                                                                             ▼  GPU
+                                                                       CsiToBayerOp → ImageProcessorOp → BayerDemosaicOp → Rgba16ToP010Op → NvencAv1Op → IvfWriter
+                                                                       (unpack RAW)   (black lvl, WB)   (NPP, RGBA16)    (CUDA kernel)     (zero-copy)    (.ivf per cam)
+                                                                                                          └─► FrameStatsOp (PTP timestamps, PSN gaps, drops, CRC) → CSV
+```
+
+One `DataChannel` + receiver operator + conversion chain per camera; all cameras share a single
+`Hololink` control connection. Everything board-specific (pins, register addresses, port↔sensor
+mapping, enumeration UUID) is isolated in `fpga/boards/<board>/` and `hsb/board/<board>/`.
+
+---
+
+## 3. Hardware
+
+### 3.1 Tauro DA322 (User Manual v1.6, Feb 2026)
+
+| Item | Value |
+|---|---|
+| FPGA | Lattice CertusPro-NX **LFCPNX-100-9CBG256I** (U4) |
+| Sensor inputs | 4× 22-pin MIPI CSI-2 connectors J1A–J1D, 4 D-PHY lanes each, **1500 Mbps/lane max**, 300 mA @ 3.3 V per connector |
+| Ethernet | 10G SFP+ cage J3 (XFI to FPGA), **1GbE and 10GbE** operation, fiber or copper SFP+ |
+| Control I/O | 2× MFP FFC connectors J4/J5, 11 GPIO each (FPGA customisation required to use them) |
+| Timing | Y3 125 MHz CMOS osc (ball H5); Y4 161.1328125 MHz LVDS Ethernet refclk (D10/E10); hardware IEEE-1588 PTP timestamping |
+| Config | Micron MT25QL256 QSPI flash; JTAG via Tag-Connect header J2 (HW-USBN-2B + TC2030-IDC-NL); OTA via `program_taurotech_da322 manifest_da322.yaml` |
+| Power | J7 Molex Micro-Lock Plus, 12 V (4.5–17 V), ~2.5 W board (product brief says ~8 W with loads) |
+| Size | 75 × 45 × 15 mm |
+| LEDs | D2 PGOOD, D3 DONE |
+| FPGA UUID (vendor manifest example) | `2b6485ba-a2c4-4b58-aee2-b4d5e623927e` |
+
+Vendor-added registers (accessible with `hs_ctl.py <addr> --get/--set`, and later `hsbctl`):
+
+| Register | Address | Bits |
+|---|---|---|
+| `USER_CSR` | `0x7000_0000` | bit0 `ST_CLEAR` (RW): reset latched data in `MIPI_DT_STAT` |
+| `MIPI_DT_CTRL` | `0x7000_0004` | `[7:0]` CAM1, `[15:8]` CAM2, `[23:16]` CAM3, `[31:24]` CAM4 reference CSI data type; only packets of that type are forwarded (e.g. `0x2B` RAW10, `0x2C` RAW12). Reset 0x00. |
+| `MIPI_DT_STAT` | `0x7000_0008` | same layout, RO, latched detected data type per camera (0x00/0x01 not latched) |
+| `LANE_SETTING_ADDR` | `0x3000_Y028` (Y = interface index 0–3) | `[2:1]`: 0→1 lane, 1→2, 2→3, 3→4 (write `0x6` for 4 lanes) |
+
+The full pin tables (MIPI balls per connector, JTAG, GPIO, power) are in `docs/hardware/da322.md`.
+**Not documented by Tauro:** SFP+ SERDES lane and SFP control pins (TX_DISABLE, MOD_ABS, LOS, SFP I2C),
+EEPROM I2C pins, camera MCLK generation details. These are needed only for a from-scratch FPGA build
+(section 12) and must come from Tauro or be inferred from the DA326 reference design.
+
+Vendor firmware package `da322_v1.2.1-pb_hsb_v2.5.0-pb6_6930609.zip` (in `~/Downloads`):
+
+- `Bitstream/fpga_cpnx_da322_3454_2511.bit` (HSB IP v2511; also flashable via Radiant Programmer:
+  External SPI Flash, JTAG2SPI, Erase/Program/Verify, TCK divider ≥ 3, MT25QL256, 8-pin W-PDFN).
+- `Host Setup Scripts/da322_v1.2.1-pb_e0b27cb_hsb_v2.5.0-pb6_6930609.patch` against
+  holoscan-sensor-bridge commit `6930609` (tag `2.5.0-PB6`). Adds `examples/hs_ctl.py`,
+  `examples/boards.py` (DA322 board identity), `examples/multi_player.py`,
+  `examples/linux_single_network_quad_imx219_player.py`, sensor drivers (imx219, imx477, ar0234,
+  arducam_b0353, tc358743, mpsb, spi), `tools/program_taurotech_da322`, and touches
+  `src/hololink/core/{enumerator,hololink}.{cpp,hpp}`.
+- Release notes: v1.1.2 FPGA v2511; v1.2.0 HSB 2.5.0-PB6; FuSa CoE apps (Thor only).
+
+### 3.2 FRAMOS FSM:GO IMX676C + FPA-A/P22 adapter
+
+Sony IMX676-AACR1 (flyer v1.0): Type 1/1.6, 2.0 µm pixels, total 3552×3576, effective 3552×3556,
+**active 3552×3552 (12.61 MP)**, recommended 3536×3536, 20 optical-black rows at top, 132-pin LGA,
+supplies 3.3/1.1/1.8 V, INCK 24/27/37.125/72/74.25 MHz, CSI-2 2/4/8-lane or 4-lane×2ch, RAW10/RAW12.
+Readout: all-pixel **10-bit 60 fps, 12-bit 30 fps**; 2/2 binning 1768×1768 60 fps; window cropping;
+DOL-HDR and Clear HDR; Dual Speed Streaming; sensor synchronisation function (XVS/XHS).
+
+FSM:GO IMX676C module (FRAMOS datasheet): 10-bit 64.77 fps / 12-bit 32.59 fps at 4 lanes × 2.5 Gbps;
+INCK 37.125 MHz on board; I2C 7-bit address **0x1A** (0x10/0x36/0x37 via SLAMODE pins), LVCMOS18,
+no pull-ups on module; rails 3.8 V (445 mW) + 1.8 V (205 mW), **640 mW max**; reset must be held low
+≥ 180 ms after rails come up; XVS/XHS bidirectional sync pins; PixelMate 60-pin (Hirose DF40C-60).
+
+FPA-A/P22-V2 adapter (PixelMate → 22-pin FFC, Hirose FH12-22S-0.5SVA): powered from **3.3 V on pin 22**,
+generates 1V8/3V8 on board; signal levels LVCMOS33; **TCA6408 I2C GPIO expander at 0x20** controls
+sensor power enable, reset and SLAMODE; J2 pinout = standard RPi/Jetson 22-pin: pins 1–16 MIPI
+(4 data + clock, GND interleaved), **17 IS_RST_IN, 18 MCLK_IN, 20 I2C_SCL_IN, 21 I2C_SDA_IN, 22 3V3**;
+J3–J5 PicoBlade connectors expose XVS/XHS/XMASTER sync. Use same-side-contact FFC (Molex 0151660241).
+
+Mapping to the DA322 connector: pin 17 CAM_EN (FPGA output) → adapter IS_RST_IN (polarity to verify),
+pin 18 CAM_MCLK (2.8 V level) → MCLK_IN (unused; module has its own INCK — verify the adapter does not
+require it), pins 20/21 I2C at 3.3 V → adapter converts to 1.8 V.
+
+Power check: FSM:GO 640 mW + adapter regulator losses ≈ 0.8 W ≈ 240 mA from a 300 mA budget. Measure.
+
+### 3.3 Host machines
+
+Running this code against the DA322 needs a **Mellanox (NVIDIA ConnectX) NIC** for the RoCE receive
+path and a **compatible NVIDIA GPU** (CUDA, NVENC AV1, and for zero-copy receive GPUDirect RDMA).
+Building needs only Docker with the NVIDIA container toolkit. The exact requirements and the current
+machine inventory are kept in **`docs/machines.md`** and nowhere else; the rest of this document uses
+two roles: the *dev box* (builds, unit tests, emulator loopback tests) and the *test machine*
+(DA322, cameras, all RoCE and benchmark runs).
+
+---
+
+## 4. Constraints and bandwidth budget
+
+### 4.1 Per-camera ceiling (D-PHY)
+
+- DA322/CPNX soft D-PHY: 4 lanes × 1.5 Gbps = **6.0 Gbps** line rate per camera.
+- Sony STARVIS 2 lane-rate settings (to confirm in the IMX676 datasheet): 2376/2079/1782/**1440**/1188/891/720/594 Mbps.
+  Highest ≤ 1.5 Gbps is 1440 Mbps → 5.76 Gbps line rate, ≈ 5.4–5.5 Gbps CSI-2 payload after packet
+  headers/footers and LP transitions.
+- Full-res RAW10 line = 4440 B; ≈ 3600–3660 total lines per frame → **≈ 40 fps max (≈ 5.0 Gbps)**.
+  Cross-check: 64.77 fps × 1440/2376 = 39.3 fps.
+- Full-res RAW12 is ADC-limited to 30 fps (4.54 Gbps) and fits within 1440 Mbps/lane.
+
+**Therefore a single IMX676 cannot saturate 10G on the DA322.** Saturation needs ≥ 2 cameras or the
+FPGA test-pattern generator planned in section 12.
+
+### 4.2 Link ceilings (HSB data plane)
+
+HSB packets: Ethernet 14 + IP 20 + UDP 8 + BTH 12 + RETH 16 + iCRC 4 = **74 B overhead**;
+payload = `((MTU − 74) / 128) × 128` → MTU 1500 → **1408 B**, MTU 4200 → 4096 B. One 128-B metadata
+block per frame (PTP timestamps, frame number, bytes written, CRC).
+
+| Link | MTU | Wire bytes / packet | Payload efficiency | Usable payload |
+|---|---|---|---|---|
+| 10G | 1500 | 1408 + 74 + 20 (preamble+IFG) = 1502 | 93.7 % | **9.37 Gbps** (HSB IP docs: 9.146 G with 1486-B frames) |
+| 10G | 4200 (payload 4096) | 4190 | 97.8 % | 9.78 Gbps — only if the FPGA build has `HOST_MTU = 4096` |
+| 1G | 1500 | 1502 | 93.7 % | **0.937 Gbps** |
+
+Packet rate at 9 Gbps: ≈ 800 k pkt/s (MTU 1500) or ≈ 275 k pkt/s (4096). hololink's `LinuxReceiver`
+does one `recv()` per packet with no `recvmmsg`/busy-poll, so **the socket path will not sustain 10G**;
+the RoCE path (NIC reassembles frames in hardware) is the real 10G test.
+
+### 4.3 Test matrix (payload = W × H × bpp × fps)
+
+| # | Cams | Mode | fps | Payload | Link | Purpose |
+|---|---|---|---|---|---|---|
+| A1 | 1 | 3552² RAW10 | ~40 (D-PHY cap) | 5.05 Gbps | 10G | max single-camera res/fps |
+| A2 | 1 | 3552² RAW12 | 30 | 4.54 Gbps | 10G | 12-bit single |
+| B1 | 2 | 3552² RAW12 | 30 | 9.08 Gbps | 10G | **10G saturation at full res** |
+| B2 | 2 | 3552² RAW10 | 36 | 9.08 Gbps | 10G | saturation, 10-bit |
+| C1 | 4 | 1768² RAW12 | 60 | 9.00 Gbps | 10G | **4-camera saturation, binned** |
+| C2 | 4 | 1768² RAW10 | 60 | 7.50 Gbps | 10G | 4-camera headroom case |
+| C3 | 4 | 3552² RAW10 | 18 | 9.08 Gbps | 10G | 4-camera full res, low fps |
+| D1 | 4 | 1768² RAW10 | 7 | 0.875 Gbps | 1G | 4-camera 1G saturation |
+| D2 | 4 | 1280×720 crop RAW10 | 25 | 0.92 Gbps | 1G | 4-camera 1G, higher fps |
+| D3 | 1 | 1768² RAW10 | 28 | 0.875 Gbps | 1G | single-camera 1G |
+| E1 | FPGA pattern generator | any | any | 9.3 Gbps | 10G | receiver limit independent of sensors (needs own FPGA build) |
+
+Frame rate is set through VMAX (integer line count), so arbitrary rates are exact. Pass criteria per
+row: ≥ 60 s run, 0 dropped frames, measured payload within 2 % of expected, CRC clean, encoder keeps up.
+
+### 4.4 GPU budget
+
+| Config | Pixel rate | Notes |
+|---|---|---|
+| A1 | 505 Mpx/s | ≈ one 4K60 stream; comfortable for demosaic + AV1 |
+| B1/B2 | 757 / 908 Mpx/s | 2 AV1 10-bit sessions; may approach the GPU's NVENC AV1 limit — **measure** |
+| C1 | 750 Mpx/s | 4 sessions × 3.1 MP × 60 fps |
+
+NVENC (Ada generation or newer): AV1/HEVC/H.264, 8- and 10-bit 4:2:0. Engine count, concurrent-session
+limits and AV1 throughput are GPU-specific and are measured on the test machine in M3. NVENC input
+formats used: `P010` (10-bit) or `NV12` (8-bit); `ARGB/ABGR` 8-bit also accepted if we skip the YUV
+conversion.
+
+### 4.5 Receive memory path
+
+hololink's `ReceiverMemoryDescriptor` first tries GPU memory exported as DMA-BUF (`cuMemAlloc` +
+`cuMemGetHandleForAddressRange`) so the NIC RDMA-writes straight into GPU VRAM (GPUDirect RDMA; needs a
+workstation/datacenter-class GPU and the open kernel modules). If that fails it falls back to
+`cuMemHostAlloc(CU_MEMHOSTALLOC_DEVICEMAP)` pinned host memory plus one `cuMemcpyHtoDAsync` per frame
+(≈ 16 MB at 40 fps ≈ 0.6 GB/s, negligible). The build enables the GPU-VRAM path
+(`HOLOLINK_ROCE_USE_GPU_VRAM=ON`, exposed as a Bazel setting); `bandwidth_test` prints which path is
+active, and the result per machine is recorded in `docs/machines.md`.
+
+---
+
+## 5. Software stack and version pins
+
+| Component | Pin (phase 1) | Why |
+|---|---|---|
+| holoscan-sensor-bridge (hololink) | commit `6930609` (tag `2.5.0-PB6`) + Tauro patch | The vendor bitstream reports HSB IP v2511; stock HSB 2.7.0 enforces `MINIMUM_HSB_IP_VERSION = 0x2602` in `src/hololink/core/data_channel.cpp` and changed the data-plane register layout (`DP_PAGE_*`, `DP_MAX_BUFF`). The board-identity strategy for DA322 lives in the vendor patch. |
+| Holoscan SDK | version required by the PB6 `docker/build.sh` (`find_package(holoscan 3.6)` at that commit) | ABI parity with hololink operators |
+| Container base | `nvcr.io/nvidia/clara-holoscan/holoscan:<that tag>-<cuda variant>`; the CUDA variant must support every GPU architecture in `docs/machines.md` (Blackwell-class GPUs need CUDA ≥ 12.8, so prefer a `cuda13` image). If the PB6-compatible HSDK has no such image, build hololink PB6 against the newest HSDK 4.x `cuda13` image and patch API differences — decide in M0 | build + run environment for everything host-side |
+| NVIDIA driver | R570+ with the open kernel modules; per-machine versions in `docs/machines.md` | Video Codec SDK 13.0 API needs ≥ 570 (13.1 needs ≥ 610); DMA-BUF GPUDirect needs the open modules |
+| nv-codec-headers | FFmpeg/nv-codec-headers tag `n13.0.19.1` (MIT) | NVENC API 13.0 headers; `dlopen("libnvidia-encode.so.1")` at runtime |
+| Bazel | 9.2.0 (`.bazelversion`), fallback 8.8.0 | rules_cuda/rules_python/verilator presubmits cover 9.x |
+| rules | `rules_cc 0.2.25`, `rules_cuda 0.3.0`, `rules_python 2.3.3` (Py 3.12), `rules_shell 0.8.0`, `buildifier_prebuilt 10.0.1`, `verilator 5.046.bcr.5`, `hedron_compile_commands` = helly25 fork via `git_override` (upstream broken on Bazel 9), optional `aspect_rules_lint 2.9.0`, optional `toolchains_llvm 1.9.1` with `stdlib = dynamic-stdc++` | all bzlmod, all tested on Bazel 9 |
+| Lattice Radiant (phase 3) | 2026.1 Linux (Ubuntu 22.04/24.04); LFCPNX-100 needs a **subscription** license (60-day eval available) | own FPGA build |
+| HSB (phase 3) | ≥ 2.7.x together with our own FPGA build on HSB IP 2606 | `hololink_module` device-driver model, current docs |
+
+Phase-2 migration to HSB ≥ 2.7 is done only together with our own bitstream (section 12) and a
+`taurotech_da322` module modelled on upstream `hololink_module/module/taurotech_da326`.
+
+---
+
+## 6. Host application architecture
+
+### 6.1 Operators and data flow (per camera k)
+
+```
+RoceReceiverOp | LinuxReceiverOp  (hololink; frame_size = csi_to_bayer.get_csi_length(), pages=2, queue_size=1)
+   └─ output: uint8 device tensor [csi_length] + metadata (frame_number, timestamp_s/ns (PTP first data),
+              metadata_s/ns, received_s/ns, psn, dropped/packets_dropped, bytes_written, crc)
+CsiToBayerOp        (hololink; RAW_8/10/12 → uint16 Bayer [H, W, 1]; configured by the sensor driver)
+ImageProcessorOp    (hololink; optical black + histogram white balance) — optional in bandwidth tests
+BayerDemosaicOp     (Holoscan SDK, NPP; RGGB/… grid; RGBA uint16 with alpha)
+Rgba16ToP010Op      (ours, CUDA; RGBA16 → P010 or NV12, BT.709 limited range; per-plane pitch for NVENC)
+NvencAv1Op          (ours; NVENC session per camera; input = registered CUDA device buffers; async output thread)
+IvfWriterOp         (ours; IVF container per camera; optional raw .obu)
+FrameStatsOp        (ours; consumes receiver metadata; per-second Gbps/fps/drops/PSN gaps/latency; CSV + summary)
+FrameCheckOp        (ours; CRC of payload vs metadata crc, expected bytes_written) — used in bandwidth_test
+```
+
+`cam_player` replaces the encode tail with `HolovizOp`. `bandwidth_test` stops after the receiver
+(plus `FrameCheckOp`). All apps read one YAML config (Holoscan `from_config`) with per-camera blocks:
+
+```yaml
+hololink: {ip: 192.168.0.2, receiver: roce, ibv_name: auto, mtu: 1500}
+cameras:
+  - {port: J1A, sensor_id: 0, mode: full_raw10, fps: 40, dt: 0x2B, lanes: 4}
+  - {port: J1B, sensor_id: 1, mode: full_raw12, fps: 30, dt: 0x2C, lanes: 4}
+encoder: {codec: av1, bit_depth: 10, rate_control: cq, cq: 28, gop: 60, preset: p4, tuning: low_latency}
+output: {dir: /data/captures, ivf: true, stats_csv: true}
+```
+
+### 6.2 Setup sequence (from `linux_imx274_player.cpp` / stereo examples)
+
+1. `cuInit`, `cuDevicePrimaryCtxRetain`.
+2. `Enumerator::find_channel(ip)` → metadata (board_id, UUID, `hsb_ip_version`, ports).
+3. For each camera k: copy metadata, `DataChannel::use_sensor(md_k, k)` (and `use_mtu` if > 1500), create
+   `DataChannel`, create `NativeImx676Sensor(channel, k)` (I2C bus `CAM_I2C_BUS + k`).
+4. Once: `hololink->start(); hololink->reset();` DA322 board setup: lanes (`0x3000_k028 = 0x6`) and
+   data-type filter (`MIPI_DT_CTRL` byte k), PTP profile if used.
+5. Per camera: `sensor.setup_clock()` (no-op on DA322: module INCK on board), `sensor.configure(mode)`,
+   `sensor.configure_converter(csi_to_bayer)`; `frame_size = csi_to_bayer->get_csi_length()`.
+6. Build graph; receiver `device_start` → `sensor.start()` (XMSTA), `device_stop` → `sensor.stop()`.
+7. `app->run()`; on exit `hololink->stop()`.
+
+### 6.3 Threads, memory, timing
+
+- One receiver thread per camera (RoCE: completion polling on its own QP/UDP port 4791 + per-VP
+  `DP_HOST_UDP_PORT`; Linux: `recv()` loop pinned via `receiver_affinity`). Cores isolated for receivers
+  on the test machine (`isolcpus` or cgroup) when running the 10G matrix.
+- Frame buffers: `pages = 2` alternating per camera (hololink warns there is no protection against
+  overwrite while downstream is still reading — `FrameCheckOp` + CRC will detect it; raise `pages` if seen).
+- Encoder: NVENC input buffers registered once (`NV_ENC_REGISTER_RESOURCE`, `CUDADEVICEPTR`), ring of
+  N ≥ 4; output bitstream lock/unlock on a dedicated thread per session; IVF frame headers carry the
+  PTP timestamp as the 64-bit pts.
+- Time base: host is PTP master (`ptp4l -f scripts/hsb-ptp.conf`, `phc2sys -s CLOCK_REALTIME`), so
+  `timestamp_s/ns` (first CSI byte) and `received_s/ns` (host) are directly comparable for latency.
+
+---
+
+## 7. IMX676 sensor driver
+
+Files: `hsb/sensors/imx676/{imx676_mode.hpp, tca6408.{hpp,cpp}, native_imx676_sensor.{hpp,cpp}}` plus a
+Python twin used only during bring-up in the vendor container (`imx676.py`, `imx676_mode.py`).
+
+Class: `NativeImx676Sensor : hololink::sensors::CameraSensor` (`configure(mode)`, `start()`, `stop()`,
+`configure_converter()`, `pixel_format()`, `bayer_format()`), I2C address 0x1A, register writes as
+16-bit address + 8-bit data via `Hololink::get_i2c(CAM_I2C_BUS + k)->i2c_transaction(...)`.
+
+Modes (all 4-lane, lane rate 1440 Mbps; fps chosen via VMAX):
+
+| Mode id | Readout | Output | Bits | Max fps (est.) |
+|---|---|---|---|---|
+| `FULL_RAW10` | all-pixel | 3552×3552 | 10 | ~40 |
+| `FULL_RAW12` | all-pixel | 3552×3552 | 12 | 30 |
+| `BIN2_RAW10` | 2/2 binning | 1768×1768 | 10 | 60 |
+| `BIN2_RAW12` | 2/2 binning | 1768×1768 | 12 | 60 |
+| `CROP_720P_RAW10` | window crop | 1280×720 | 10 | ≥ 60 (1G tests) |
+
+Register groups (Sony STARVIS 2 family layout; exact values from the FRAMOS-supplied IMX676 datasheet):
+standby/stream (`STANDBY`, `XMSTA`, `REGHOLD`), interface (`LANEMODE`, `DATARATE_SEL`, INCK select for
+37.125 MHz), readout (`WINMODE`, `ADDMODE`, `ADBIT`/`MDBIT`, crop window), timing (`HMAX`, `VMAX`,
+`SHR0` exposure), gain, embedded-data enable, sync (`XVS/XHS` direction for later multi-camera sync).
+The FRAMOS GPL Jetson driver (`framosimaging/framos-jetson-drivers`) is a cross-check for register
+*values* only; no code is copied. Also check `framosimaging/framos-holoscan-drivers` (HSB 2.0.0-era,
+Apache-2.0) for an existing FSM:GO driver before writing ours.
+
+Bring-up sequence per port: TCA6408 (0x20) configure outputs → sensor power enable → reset low
+≥ 180 ms → release → read chip/revision registers → write mode table → `XMSTA` start → verify
+`MIPI_DT_STAT` byte k shows 0x2B/0x2C and `bytes_written` matches `csi_length`.
+
+Converter math (`configure_converter`): `start_byte = converter.receiver_start_byte() +
+embedded_lines × line_bytes`, `line_bytes = round_up(W × bpp / 8, 8)`,
+`csi_length = start_byte + line_bytes × H + trailing_bytes`. With the DA322 data-type filter set to the
+image type, embedded-data long packets (DT 0x12) are dropped in the FPGA and `embedded_lines = 0`;
+without the filter the count must be measured from `bytes_written`. Bayer order RGGB (verify).
+
+---
+
+## 8. DA322 board support layer (`hsb/board/da322`)
+
+- `da322_regs.hpp`: constants from section 3.1 plus hololink core addresses used
+  (`I2C_CTRL 0x0300_0200`, `CAM_I2C_BUS = 1`, `HSB_IP_VERSION 0x80`, `FPGA_DATE 0x84`,
+  `sif_address = 0x0100_0000 + 0x10000·k`, `hif_address = 0x0200_0300`).
+- `Da322Board`: `configure_port(k, lanes, data_type)`, `clear_dt_status()`, `detected_dt(k)`,
+  `port_name(k) ↔ sensor_id ↔ i2c_bus (1 + k)` mapping (J1A=CAM1=k0 … J1D=CAM4=k3 — verify on hardware),
+  MFP GPIO helpers (future XVS fan-out), enumeration helper that asserts the DA322 UUID/board-id from
+  the vendor `boards.py`/`enumerator.cpp` patch.
+- Nothing outside this directory (and `fpga/boards/da322`) may hard-code DA322 addresses or pins.
+
+---
+
+## 9. Encoder path (NVENC AV1)
+
+- `hsb/encode/nvenc_session`: loads `libnvidia-encode.so.1` via `dynlink_loader.h`, checks
+  `NvEncodeAPIGetMaxSupportedVersion` ≥ 13.0, opens a CUDA-context session, `NV_ENC_CODEC_AV1_GUID`,
+  presets P1–P7 + `NV_ENC_TUNING_INFO_LOW_LATENCY`/`ULTRA_LOW_LATENCY`, 8-bit `NV12` or 10-bit `P010`
+  (AV1 Main, `outputBitDepth = 10`), rate control CQ/CBR/VBR, GOP/IDR interval, no B-frames by default,
+  registered CUDA device-pointer inputs (zero copy), async bitstream retrieval with completion events.
+- `IvfWriter`: 32-byte IVF header (`DKIF`, fourcc `AV01`, width/height, timebase 1/fps or 1 ns), 12-byte
+  per-frame header (size, pts); optional raw `.obu` low-overhead output. Decoded/verified with
+  `ffmpeg -i x.ivf -f null -` and `dav1d`.
+- Fallback: HEVC Main10 (`NV_ENC_CODEC_HEVC_GUID`) behind the same interface if AV1 cannot sustain B1/B2.
+
+---
+
+## 10. Repository layout
+
+```
+camera-fpga-dev/
+├── MODULE.bazel  .bazelrc  .bazelversion  BUILD.bazel  .bazelignore  .gitattributes (git-lfs for *.bit, *.pdf, *.patch)
+├── DESIGN.md  TODO.md  WORKING.md  README.md
+├── docs/
+│   ├── machines.md      requirements + inventory of dev/test machines — the only place with machine-specific details
+│   ├── hardware/        da322.md (pins, registers), fsmgo_imx676_p22.md, imx676_modes.md, cabling_power.md
+│   ├── bandwidth.md     budget + matrix + measured results
+│   ├── bringup/         host_setup.md (ConnectX, sysctl, PTP), flashing.md (JTAG, OTA), first_light.md
+│   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path (GPUDirect vs pinned host), ADR-0003 AV1/IVF, ADR-0004 Bazel 9
+├── third_party/
+│   ├── holoscan/        holoscan.BUILD → /opt/nvidia/holoscan (new_local_repository)
+│   ├── hololink/        hololink.BUILD + patches/0001-taurotech-da322-v1.2.1-pb.patch, 0002-… (ours)
+│   └── nv_codec_headers/BUILD (http_archive n13.0.19.1)
+├── tools/
+│   ├── docker/          Dockerfile.dev, dev.sh (build/test/run/shell; persistent bazel cache volume; RDMA/GPU flags)
+│   ├── host/            sysctl.d/52-hololink-rmem_max.conf, net_setup.sh, ptp4l/phc2sys units, hsb-ptp.conf, connectx_check.sh
+│   ├── bazel/           radiant.bzl (radiant_bitstream + @radiant repo rule), verilator.bzl, cocotb.bzl
+│   └── py/              pyproject.toml, requirements.lock.txt (rules_python uv lock), analysis/ (CSV → plots)
+├── hsb/
+│   ├── board/da322/     da322_regs.hpp, da322_board.{hpp,cpp}, tests/
+│   ├── sensors/imx676/  imx676_mode.hpp, tca6408.{hpp,cpp}, native_imx676_sensor.{hpp,cpp}, tests/
+│   ├── encode/          nvenc_session.{hpp,cpp}, ivf_writer.{hpp,cpp}, tests/ (nvenc_smoke_test requires-gpu)
+│   ├── ops/             rgba16_to_p010/ (cuda_library), nvenc_av1_op/, ivf_writer_op/, frame_stats_op/, frame_check_op/
+│   └── cli/hsbctl/      enumerate | rd | wr | i2c | lanes | dt | ptp
+├── apps/
+│   ├── hello_cuda/  hello_holoscan/   toolchain smoke tests
+│   ├── cam_player/      N cameras → Holoviz
+│   ├── bandwidth_test/  receive-only stats with pass/fail thresholds, CSV
+│   ├── cam_encode/      N cameras → NVENC AV1 → IVF
+│   └── emu_source/      hololink emulator wrapper: synthetic RAW frames at a target Gbps (no-FPGA tests)
+├── fpga/
+│   ├── README.md        Radiant flow, license, IP catalog list, programming
+│   ├── boards/da322/    da322.pdc, da322.sdc, board_params.svh ;  boards/custom_v1/ (later)
+│   ├── rtl/             da322_top.sv, csi_dt_filter.sv, test_pattern_gen.sv, glue
+│   ├── ip/              Lattice IP configs (D-PHY RX ×4, 10G MAC + PCS, PLL) + regeneration scripts
+│   ├── sim/             cocotb + Verilator tests for our RTL
+│   ├── radiant/         build.tcl, BUILD (radiant_bitstream targets; tags manual/no-sandbox/no-remote/no-cache)
+│   └── bitstreams/      vendor/fpga_cpnx_da322_3454_2511.bit (LFS), manifests/manifest_da322.yaml
+└── compression/README.md   TODO: JPEG XS-like FPGA encoder + GPU decoder
+```
+
+---
+
+## 11. Build system (Bazel)
+
+`MODULE.bazel` sketch:
+
+```starlark
+module(name = "camera_fpga_dev")
+bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "rules_cuda", version = "0.3.0")
+bazel_dep(name = "rules_python", version = "2.3.3")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "buildifier_prebuilt", version = "10.0.1", dev_dependency = True)
+bazel_dep(name = "verilator", version = "5.046.bcr.5")
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(module_name = "hedron_compile_commands",
+             remote = "https://github.com/helly25/bazel-compile-commands-extractor.git", commit = "<pin>")
+
+cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
+cuda.toolkit(name = "cuda", toolkit_path = "")          # /usr/local/cuda inside the dev container
+use_repo(cuda, "cuda")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.12", is_default = True)
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(hub_name = "pypi", python_version = "3.12", requirements_lock = "//tools/py:requirements.lock.txt")
+use_repo(pip, "pypi")
+
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name = "holoscan_sdk", path = "/opt/nvidia/holoscan",
+                     build_file = "//third_party/holoscan:holoscan.BUILD")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name = "hololink", urls = ["https://github.com/nvidia-holoscan/holoscan-sensor-bridge/archive/6930609c4ce264ec7e2936dd1f5813323fccb08e.tar.gz"],
+             strip_prefix = "holoscan-sensor-bridge-6930609c4ce264ec7e2936dd1f5813323fccb08e",
+             patches = ["//third_party/hololink/patches:0001-taurotech-da322-v1.2.1-pb.patch"], patch_args = ["-p1"],
+             build_file = "//third_party/hololink:hololink.BUILD")
+http_archive(name = "nv_codec_headers", urls = ["https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n13.0.19.1.tar.gz"],
+             strip_prefix = "nv-codec-headers-n13.0.19.1", build_file = "//third_party/nv_codec_headers:BUILD.nvcodec")
+```
+
+`.bazelrc` essentials: `build --cxxopt=-std=c++17`, `build --@rules_cuda//cuda:archs=<list>` (one
+entry per GPU architecture in `docs/machines.md`), `build --define=hololink_gpu_vram=on` (GPUDirect
+receive; hololink falls back to pinned host memory at runtime on GPUs without it),
+`test --test_env=HOLOSCAN_LIB_PATH=/opt/nvidia/holoscan/lib`, `common --disk_cache=/var/cache/bazel/disk
+--repository_cache=/var/cache/bazel/repo`, `startup --output_user_root=/var/cache/bazel/out`,
+tags `requires-gpu` / `requires-hw` / `requires-radiant` excluded from the default `bazel test //...` on CI.
+
+Wrappers:
+
+- `third_party/holoscan/holoscan.BUILD`: `cc_import` per `libholoscan_*.so` / `libgxf_*.so`, `cc_library
+  holoscan` with `includes = ["include"]`, `linkopts = ["-Wl,--no-as-needed", ..., "-Wl,-rpath,/opt/nvidia/holoscan/lib"]`.
+  Use Holoscan's fmt/spdlog/yaml-cpp copies; never add competing `bazel_dep`s for those.
+- `third_party/hololink/hololink.BUILD`: `core` (libcuda + fmt header-only), `sensors`,
+  `operators:{roce_receiver (libibverbs), linux_receiver, csi_to_bayer (NVRTC), image_processor,
+  packed_format_converter}`; kernels are NVRTC strings, so no `.cu` compilation is needed there.
+- `third_party/nv_codec_headers`: header-only `cc_library` + `-ldl`.
+
+Dev container (`tools/docker/Dockerfile.dev`): `FROM nvcr.io/nvidia/clara-holoscan/holoscan:<tag>-dgpu`,
+add bazelisk, `libibverbs-dev rdma-core ibverbs-providers linuxptp git git-lfs libnpp-dev ffmpeg`.
+`tools/dev.sh` runs it with `--net host --gpus all --runtime nvidia --ipc host --ulimit memlock=-1
+--cap-add IPC_LOCK --cap-add SYS_NICE --device /dev/infiniband/... -e NVIDIA_DRIVER_CAPABILITIES=all`,
+mounts the repo at `/workspace` and a named volume at `/var/cache/bazel`, keeps one long-lived container
+and `docker exec`s into it so the Bazel server stays warm.
+
+FPGA rules (`tools/bazel/radiant.bzl`): repository rule `@radiant` resolves `$RADIANT_HOME`
+(fails with a clear message if absent); `radiant_bitstream(name, top, srcs, pdc, sdc, ip, device)`
+runs `bin/lin64/radiantc build.tcl` (`prj_create … -dev LFCPNX-100-9CBG256I -synthesis synplify`,
+`prj_run Synthesis/Map/PAR`, `prj_run Export -task Bitgen`) with
+`execution_requirements = {no-sandbox, no-remote, no-cache, local}` and `--action_env=RADIANT_HOME,LATTICE_LICENSE_FILE`.
+Simulation: thin `verilator_cc_library` over the BCR `verilator` module; cocotb from pip.
+
+---
+
+## 12. FPGA design plan (own build for DA322)
+
+Sources (all Apache-2.0 in holoscan-sensor-bridge `fpga/`):
+
+- `fpga/nv_hsb_ip/` — the Hololink IP as SystemVerilog (`top/HOLOLINK_top.sv`, `dp_pkt/`, `roce/`,
+  `packetizer/`, `ptp/`, `bootp/`, `ecb/`, `i2c/`, `spi/`, `gpio`, `reg_map/`, …) + `nv_hsb_ip_simple_tb/`.
+- `fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/` — CertusPro-NX reference for the Tauro **DA326**
+  (`rtl/top/FPGA_top.sv`, `HOLOLINK_def.svh`, `mipi_cam_rcvr/mipi_cam_rcvr.sv`, `eth_10gb/`, `clk_n_rst/`,
+  `build/`, `lattice_env.sh`): 2× soft D-PHY RX, Hololink core, 10G MAC+PCS+SERDES, I2C buses
+  (0 ctrl/EEPROM, 1 camera, 2 PoC), 11 GPIO, CAM_RST, CAM_MCLK 27 MHz, QSPI flash, JTAG. Its Ethernet
+  refclk (161.1328125 MHz) and MIPI port balls (L12–L16, L3–P2) match the DA322 manual, so the pin
+  file is a strong starting point for the DA322.
+- Lattice IP catalog (Radiant "IP on Server"): CSI-2/DSI D-PHY RX (soft) ×4, 10 Gb Ethernet MAC 1.1.0
+  (with GMII/MII/XGMII dynamic speed selection → 1G mode candidate), 10 Gb Ethernet PCS, PLLs.
+  Licensing of these IPs to be confirmed in the catalog (expected no-charge).
+
+Work: `fpga/boards/da322/da322.pdc` from `docs/hardware/da322.md` + DA326 Ethernet/SFP/EEPROM pins
+(confirm with Tauro); `da322_top.sv` instantiating 4 MIPI receivers, 4 camera I2C buses, our
+`csi_dt_filter` (mirrors Tauro's `MIPI_DT_CTRL/STAT` semantics so the host layer stays the same),
+`test_pattern_gen` (programmable W×H×bpp×fps RAW source per SIF for matrix row E1), PTP; parameter
+`HOST_MTU` 1500 vs 4096 as a build option; 1G MAC mode as a build/runtime option.
+Programming: JTAG (HW-USBN-2B + Tag-Connect, `radiant_programmer` or `hsb_flasher`), then OTA via
+manifest. Host migration afterwards: HSB ≥ 2.7 + `taurotech_da322` `hololink_module` driver
+(model: `hololink_module/module/taurotech_da326/module_entry.cpp`: publisher with sensor count,
+data-plane count, `hif_address`, `MipiDphyInterfaceV1::program(port, lanes, line_rate_mbps)`).
+
+Known gaps: SFP+ SERDES lane assignment, SFP control pins, EEPROM I2C balls, whether the vendor
+bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
+
+---
+
+## 13. Test plan
+
+| Level | Test | Where |
+|---|---|---|
+| Unit | IVF framing, NVENC parameter mapping, CSI length/start-byte math, mode-table sanity (HMAX/VMAX vs fps, lane rate ≤ 1500), DA322 register packing, TCA6408 sequencing | `bazel test //...` (dev box, container) |
+| GPU | `nvenc_smoke_test`: synthetic P010 frames → AV1 IVF → `ffmpeg` decode count check; `rgba16_to_p010` kernel vs CPU reference | `requires-gpu` |
+| No-FPGA integration | hololink emulator (`apps/emu_source`) over the dev box's NIC-pair loopback (see `docs/machines.md`) in a network namespace drives `bandwidth_test` and `cam_encode` at 1G-equivalent (D-rows) and multi-Gbps rates (Linux receiver only) | dev box |
+| Hardware bring-up | `hsbctl enumerate` (UUID, board-id, IP version, FPGA date); `hsbctl i2c` reads IMX676 ID on all 4 ports; `MIPI_DT_STAT` shows expected DT; `cam_player` live image per port | test machine |
+| Bandwidth matrix | rows A1–C3 on RoCE (and Linux for reference), D1–D3 on 1G (FPGA 1G mode or emulator fallback), MTU 1500 (and 4096 if supported); 60 s each; CSV in `docs/bandwidth.md` | test machine |
+| Encode | `cam_encode` on A1, B1, C1: real-time (no encoder back-pressure), IVF decodes, frame count == frames received, PTP pts monotonic | test machine |
+| FPGA | cocotb/Verilator for `csi_dt_filter`, `test_pattern_gen`; `bazel build //fpga/radiant:da322_bitstream`; board streams 4 cameras on our bitstream; E1 saturates 10G | dev box (Radiant) + test machine |
+
+---
+
+## 14. Milestones (details and checkboxes in `TODO.md`)
+
+| # | Milestone | Exit criterion |
+|---|---|---|
+| M0 | Repo skeleton, docs, Bazel toolchain, dev container, NVENC/IVF library + smoke test | `tools/dev.sh build //... && tools/dev.sh test //...` green on the dev box; hello apps run on the dev box GPU |
+| M1 | Hardware bring-up with the vendor stack (Python IMX676 driver in the vendor container) | 4 live cameras at a low-bandwidth mode; validated mode tables |
+| M2 | Bazel C++ stack: hololink wrap, DA322 board layer, IMX676 C++ driver, `hsbctl`, `cam_player`, `bandwidth_test` | Bazel-built player shows 1 and 4 cameras over RoCE; bandwidth CSV |
+| M3 | NVENC AV1 path (`Rgba16ToP010Op`, `NvencAv1Op`, `IvfWriter`, `cam_encode`, emulator regression) | A1 encodes in real time; IVF decodes; C1 encode measured |
+| M4 | 10G saturation matrix on RoCE and Linux paths | rows A1–C3 recorded with pass/fail |
+| M5 | 1G link test (FPGA 1G mode, else emulator fallback) | rows D1–D3 recorded |
+| M6 | Own FPGA build for DA322 (+ test pattern generator, DT filter, MTU/1G options), host migration to HSB ≥ 2.7, custom-board pin plan | our bitstream streams 4 cameras; E1 saturates 10G |
+| M7 | JPEG XS-like compression | **TODO — not designed** |
+
+---
+
+## 15. Risks and open questions
+
+| # | Risk / question | Mitigation |
+|---|---|---|
+| 1 | Single-camera 10G saturation impossible on DA322 (6 Gbps D-PHY) | Use 2 cameras (B1/B2) or FPGA pattern generator (E1); state this explicitly in results |
+| 2 | GPUDirect (DMA-BUF) receive path may not come up on a given GPU/driver/NIC/PCIe combination | hololink falls back to pinned host memory + async H2D (cheap at these rates); `bandwidth_test` reports the active path; requirements in `docs/machines.md` |
+| 3 | hololink Linux receiver cannot reach 10G (one `recv()` per packet) | RoCE is the primary path; Linux results are informational |
+| 4 | Radiant subscription license for LFCPNX-100; IP licensing | Budget or 60-day eval before M6; confirm IP terms in catalog |
+| 5 | DA322 pin gaps for from-scratch FPGA | Ask Tauro for `.pdc`/project; fall back to DA326 reference design pins |
+| 6 | IMX676 datasheet/register map under NDA | Obtain via FRAMOS customer access; GPL driver as value cross-check only |
+| 7 | Vendor bitstream 1G / MTU 4096 support unknown | Measure at 1500; 1G via emulator fallback (M5 option B) |
+| 8 | NVENC AV1 throughput at ~760–900 Mpx/s 10-bit | Measure in M3; HEVC fallback or encode a subset |
+| 9 | Camera connector power (300 mA) vs FSM:GO + P22 | Measure per port; custom board gets proper rails |
+| 10 | Vendor patch / PB6 pin ages; upstream 2.7 API differences | Keep app code behind thin `hsb/` interfaces; migrate with M6 |
+| 11 | `pages = 2` buffer overwrite hazard under load | `FrameCheckOp` CRC + PSN checks; raise `pages`/`queue_size` |
+| 12 | Multi-camera sync (XVS/XHS) not designed | Stretch goal in `TODO.md`; MFP GPIO reserved |
+
+---
+
+## 16. Custom board considerations (for the follow-on board around LFCPNX-100)
+
+- Direct PixelMate (Hirose DF40C-60) connectors for FSM:GO, no P22 adapters; dedicated 3.8 V / 1.8 V
+  rails with sequencing (1V8 first or simultaneous), per-camera power switches and current sense.
+- Route XVS/XHS/XMASTER of all cameras to FPGA GPIO for hardware frame sync; keep 11-GPIO MFP concept.
+- D-PHY stays at 1.5 Gbps/lane (FPGA limit): ~40 fps full-res RAW10 per camera regardless of link.
+- Lift the single-link cap: CertusPro-NX has multiple 10G-capable SERDES lanes and the HSB IP supports
+  multiple host interfaces (data planes) → 2–4 SFP+ / 10GBASE-KR ports (4 × 5 Gbps = 20 Gbps).
+- Keep the same register semantics (`MIPI_DT_CTRL`, lane setting) so `hsb/board/*` differs only in constants.
+- PTP-capable PHY/SERDES path, EEPROM for MAC, QSPI flash with golden/primary images, JTAG Tag-Connect.
+
+---
+
+## 17. Future work — JPEG XS-like compression (TODO)
+
+Not designed yet. Placeholder in `compression/README.md`. When started: FPGA-side line-based wavelet
+codec after the CSI data-type filter, GPU-side decoder as a Holoscan operator, HSB payload stays
+"opaque bytes" (frame size becomes variable → requires HSB early-TLAST handling).
+
+---
+
+## 18. References
+
+- Tauro DA322 User Manual v1.6 (`~/Downloads/TauroTech_DA322_Holoscan_MIPI_Adapter_User_Manual_v1.6.pdf`);
+  product page https://taurotech.com/products/nvidia-holoscan/da322-holoscan/ ;
+  Lattice partner page https://www.latticesemi.com/en/Products/DevelopmentBoardsAndKits/DA322-Holoscan-MIPI-Adapter
+- Vendor package `~/Downloads/da322_v1.2.1-pb_hsb_v2.5.0-pb6_6930609.zip`
+- Lattice HSB Quick Start Guide FPGA-AN-02096 (`~/Downloads/FPGA-AN-02096-1-0-Holoscan-Sensor-Bridge-Quick-Start-Guide.pdf`)
+- holoscan-sensor-bridge: https://github.com/nvidia-holoscan/holoscan-sensor-bridge (tag 2.5.0-PB6 = `6930609`; latest 2.7.0);
+  docs https://docs.nvidia.com/holoscan/sensor-bridge/ (dataplane, controlplane, host-setup, emulation, new_sensors,
+  mipi-cpnx-reference-design https://docs.nvidia.com/holoscan/sensor-bridge/reference-designs/mipi-cpnx-reference-design)
+- Holoscan SDK: https://docs.nvidia.com/holoscan/sdk-user-guide/sdk_installation.html ; NGC `nvcr.io/nvidia/clara-holoscan/holoscan`
+- Sony IMX676-AACR1 flyer: https://www.sony-semicon.com/files/62/flyer_security/IMX676-AACR1_Flyer.pdf
+- FRAMOS FSM:GO IMX676C datasheet: https://www.mouser.com/catalog/specsheets/FRAMOS_FSM_GO_IMX676C_Datasheet.pdf ;
+  FPA-A/P22-V2: https://docs.framos.com/en/latest/FSMEcosystem/ProductDocumentation/FPA/FPA-A-P22V2.html ;
+  drivers: https://github.com/framosimaging (framos-jetson-drivers, framos-holoscan-drivers)
+- Lattice CertusPro-NX D-PHY limits: CSI-2/DSI D-PHY Rx IP User Guide FPGA-IPUG-02081; Radiant licensing https://www.latticesemi.com/en/Support/Licensing
+- Bazel: rules_cuda https://github.com/bazel-contrib/rules_cuda , rules_python, BCR `verilator`, helly25 compile-commands fork,
+  nv-codec-headers https://github.com/FFmpeg/nv-codec-headers (tag n13.0.19.1)
+- NVENC: Video Codec SDK 13.0 application note; GPU support matrix https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new
