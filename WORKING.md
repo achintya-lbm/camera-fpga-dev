@@ -43,6 +43,16 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
   seating on pins 1–16, lane/clock pairing vs the P22, receiver timing). A vendor-supported RPi camera
   (IMX219/IMX477) on the same connector would validate the FPGA receive path independently.
 
+**After the CAM4 cable reseat (same day, later)**: unchanged — no data packets, `MIPI_DT_STAT` 0.
+Also tried: FRAMOS's TPG-disable table incl. TESTCLKEN 0x5300 = 0x02 (register does not read back on
+this sensor), TPG with TESTCLKEN 0x0A, XVS_XHS_DRV 0x00/0x03/0x0C, writes to the only other accessible
+MIPI-block word (0x3000Y024) and lane-register bit 0. Jetson comparison: the FRAMOS module ran on the
+FPA-4.A-AGX GMSL board there (own regulators, MAX96793 serializer as the CSI-2 receiver, no
+`xmaster-gpio` in the X242 DT), so the sensor register set is identical but both the power source and
+the D-PHY receiver differ from the DA322 + P22 setup. Expander pin map confirmed on the bench: P4 high →
+sensor at 0x10, P5 high → 0x36 (SLAMODE0/1 as documented), P7 = TENABLE; PW_EN_0/1 and RST_0 on P0–P2
+have no observable effect (the DA322's CAM_EN/IS_RST_IN drives the module reset).
+
 **Tooling**: `tools/capture/capture_modes.sh` + `raw_frame` decoder ready; `bandwidth_test --dump-dir`
 dumps verified on the emulator. Captures for the docs are blocked on the CSI link.
 
