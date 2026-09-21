@@ -112,8 +112,12 @@ def to_srgb8(rgb: np.ndarray, bits: int, black: float, gain: str | float, wb: bo
     full = float((1 << bits) - 1)
     x = np.clip(rgb - black, 0, None) / max(full - black, 1.0)
     if wb:
-        means = np.maximum(x.reshape(-1, 3).mean(axis=0), 1e-6)
-        x = x * (means[1] / means)  # grey-world white balance to green
+        # Grey-world white balance to green over pixels that are neither clipped nor black.
+        flat = x.reshape(-1, 3)
+        valid = (flat.max(axis=1) < 0.9) & (flat.min(axis=1) > 0.005)
+        sample = flat[valid] if valid.sum() > 1000 else flat
+        means = np.maximum(sample.mean(axis=0), 1e-6)
+        x = x * (means[1] / means)
     if gain == "auto":
         p = np.percentile(x, 99.5)
         g = 0.9 / max(p, 1e-6)

@@ -4,13 +4,15 @@
 #
 #   tools/capture/capture_modes.sh [--port J1D] [--receiver roce|linux] [--ip 192.168.0.2]
 #                                  [--out captures/imx676_cam4] [--duration 12] [--modes "A B C"]
+#                                  [--fps N] [--exposure-ms E] [--gain-db G]
 #
 # Per mode: bandwidth_test with --dump-dir (3 raw frames + sidecars, CSV, JSON summary), then
 # tools/py:raw_frame for previews/statistics. Requires the apps built (bazel build //apps/... //tools/py:raw_frame).
 set -euo pipefail
-port=J1D; receiver=roce; ip=192.168.0.2; out=captures/imx676_cam4; duration=12
+port=J1D; receiver=linux; ip=192.168.0.2; out=captures/imx676_cam4; duration=12
 modes="FULL_RAW10 FULL_RAW12 BIN2_RAW12 CROP_3552X2160_RAW10 CROP_1280X720_RAW10"
 fps=1000   # above every ceiling: PlanTiming clamps VMAX to its minimum, i.e. the mode's maximum rate
+exposure_ms=3; gain_db=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --port) port="$2"; shift 2 ;;
@@ -20,6 +22,8 @@ while [[ $# -gt 0 ]]; do
     --duration) duration="$2"; shift 2 ;;
     --modes) modes="$2"; shift 2 ;;
     --fps) fps="$2"; shift 2 ;;
+    --exposure-ms) exposure_ms="$2"; shift 2 ;;
+    --gain-db) gain_db="$2"; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -40,7 +44,7 @@ p22:
   enabled: true
   expander_address: 0x20
 cameras:
-  - {port: $port, mode: $mode, fps: $fps, lanes: 4, exposure_ms: 10, gain_db: 6}
+  - {port: $port, mode: $mode, fps: $fps, lanes: 4, exposure_ms: $exposure_ms, gain_db: $gain_db}
 YAML
   echo "=== $mode ==="
   "$bw" --config "$dir/rig.yaml" --duration "$duration" --warmup 3 --csv-dir "$dir" --summary "$dir/summary.json" \
