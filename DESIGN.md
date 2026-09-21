@@ -1,6 +1,6 @@
 # DESIGN — Holoscan Sensor Bridge camera ingest on the Tauro DA322 with 4× FRAMOS FSM:GO IMX676
 
-Status: **M0 complete — native Bazel build, hermetic CUDA, Holoscan 3.9.0 built from source; M1 hardware bring-up next** (2026-09-18).
+Status: **M2 C++ stack built and verified against the HSB emulator (board layer, IMX676 driver, hsbctl, cam_player, bandwidth_test); M1 hardware bring-up on the test machine next** (2026-09-18).
 Companion files: `TODO.md` (milestone checklists), `WORKING.md` (dated lab notebook),
 `docs/hardware/da322.md` (pin tables transcribed from the DA322 manual v1.6), `docs/machines.md`
 (the only place that records which computers we use and what they contain).
@@ -140,12 +140,25 @@ two roles: the *dev box* (builds, unit tests, emulator loopback tests) and the *
 ### 4.1 Per-camera ceiling (D-PHY)
 
 - DA322/CPNX soft D-PHY: 4 lanes × 1.5 Gbps = **6.0 Gbps** line rate per camera.
-- Sony STARVIS 2 lane-rate settings (to confirm in the IMX676 datasheet): 2376/2079/1782/**1440**/1188/891/720/594 Mbps.
-  Highest ≤ 1.5 Gbps is 1440 Mbps → 5.76 Gbps line rate, ≈ 5.4–5.5 Gbps CSI-2 payload after packet
-  headers/footers and LP transitions.
-- Full-res RAW10 line = 4440 B; ≈ 3600–3660 total lines per frame → **≈ 40 fps max (≈ 5.0 Gbps)**.
-  Cross-check: 64.77 fps × 1440/2376 = 39.3 fps.
-- Full-res RAW12 is ADC-limited to 30 fps (4.54 Gbps) and fits within 1440 Mbps/lane.
+- IMX676 `DATARATE_SEL` lane rates: 2376/2079/1782/1440/1188/891/720/594 Mbps. Not every rate is valid
+  for every readout (FRAMOS driver rules, validated on hardware by the user's Jetson bring-up): 4-lane
+  all-pixel/crop **10-bit → {2376, 1188, 594}**, **12-bit → {1440, 720}**, 2×2 binning (12-bit output
+  only) → {1782, 891, 594}. Under the 1.5 Gbps cap that leaves **1188 Mbps for RAW10, 1440 Mbps for
+  RAW12, 891 Mbps binned**.
+- Line time is set by the minimum `HMAX` for the lane rate: 628 clocks of 74.25 MHz = **8.458 µs** at
+  1440/1188/891 Mbps (318 at 2376). `VMAX` ≥ readout lines + 72, and binning still scans 2× lines, so
+  3556-line readouts cap at **74.25 MHz / (628 × 3628) = 32.6 fps** for RAW10, RAW12 and binned alike;
+  crops scale with height (3552×2160 → 53 fps, 1280×720 → 149 fps). `hsb/sensors/imx676/imx676_mode.cc`
+  encodes these rules; `MaxFps()` is unit-tested. Two of them are the FRAMOS driver's conservative
+  choices rather than datasheet facts and are M1 experiments: a smaller HMAX for 10-bit at 1188 Mbps
+  would raise the RAW10 ceiling, and binning may not need VMAX ≥ 3556 + 72 (Sony quotes 240 fps for
+  binned 1080p, which is only possible if binned rows count once and HMAX can drop). Binning always
+  cuts lane traffic (~3.3× fewer bits per frame than full-res RAW10); whether it also raises fps on the
+  DA322 (up to ~64 fps at 1776×1778 if the VMAX rule relaxes) is what the experiment decides.
+  The IMX676 outputs RAW10 or RAW12 only (`MDBIT` is a 1-bit choice; FRAMOS lists "10/12 bit"), so
+  there is no RAW8 mode; every FRAMOS binning table uses 12-bit output.
+- Single-camera payload ceilings on the DA322: FULL_RAW12 @ 32 fps = 4.85 Gbps, FULL_RAW10 @ 32 fps =
+  4.04 Gbps.
 
 **Therefore a single IMX676 cannot saturate 10G on the DA322.** Saturation needs ≥ 2 cameras or the
 FPGA test-pattern generator planned in section 12.
@@ -170,16 +183,16 @@ the RoCE path (NIC reassembles frames in hardware) is the real 10G test.
 
 | # | Cams | Mode | fps | Payload | Link | Purpose |
 |---|---|---|---|---|---|---|
-| A1 | 1 | 3552² RAW10 | ~40 (D-PHY cap) | 5.05 Gbps | 10G | max single-camera res/fps |
-| A2 | 1 | 3552² RAW12 | 30 | 4.54 Gbps | 10G | 12-bit single |
-| B1 | 2 | 3552² RAW12 | 30 | 9.08 Gbps | 10G | **10G saturation at full res** |
-| B2 | 2 | 3552² RAW10 | 36 | 9.08 Gbps | 10G | saturation, 10-bit |
-| C1 | 4 | 1768² RAW12 | 60 | 9.00 Gbps | 10G | **4-camera saturation, binned** |
-| C2 | 4 | 1768² RAW10 | 60 | 7.50 Gbps | 10G | 4-camera headroom case |
-| C3 | 4 | 3552² RAW10 | 18 | 9.08 Gbps | 10G | 4-camera full res, low fps |
-| D1 | 4 | 1768² RAW10 | 7 | 0.875 Gbps | 1G | 4-camera 1G saturation |
-| D2 | 4 | 1280×720 crop RAW10 | 25 | 0.92 Gbps | 1G | 4-camera 1G, higher fps |
-| D3 | 1 | 1768² RAW10 | 28 | 0.875 Gbps | 1G | single-camera 1G |
+| A1 | 1 | `FULL_RAW10` 3552×3556 | 32 (D-PHY/HMAX cap 32.6) | 4.04 Gbps | 10G | max single-camera 10-bit rate |
+| A2 | 1 | `FULL_RAW12` 3552×3556 | 30 | 4.55 Gbps | 10G | 12-bit single (max single-camera payload: 32 fps = 4.85 Gbps) |
+| B1 | 2 | `FULL_RAW12` | 30 | 9.09 Gbps | 10G | **10G saturation at full res** |
+| B2 | 2 | `FULL_RAW10` | 32 | 8.09 Gbps | 10G | 10-bit pair (cannot reach 9 Gbps) |
+| C1 | 4 | `FULL_RAW12` | 15 | 9.09 Gbps | 10G | **4-camera saturation, 12-bit** |
+| C2 | 4 | `BIN2_RAW12` 1776×1778 | 30 | 4.55 Gbps | 10G | 4-camera binned headroom case |
+| C3 | 4 | `FULL_RAW10` | 18 | 9.09 Gbps | 10G | 4-camera full res, low fps |
+| D1 | 4 | `BIN2_RAW12` | 6 | 0.91 Gbps | 1G | 4-camera 1G saturation |
+| D2 | 4 | `CROP_1280X720_RAW10` | 25 | 0.92 Gbps | 1G | 4-camera 1G, higher fps |
+| D3 | 1 | `BIN2_RAW12` | 24 | 0.91 Gbps | 1G | single-camera 1G |
 | E1 | FPGA pattern generator | any | any | 9.3 Gbps | 10G | receiver limit independent of sensors (needs own FPGA build) |
 
 Frame rate is set through VMAX (integer line count), so arbitrary rates are exact. Pass criteria per
@@ -189,9 +202,9 @@ row: ≥ 60 s run, 0 dropped frames, measured payload within 2 % of expected, CR
 
 | Config | Pixel rate | Notes |
 |---|---|---|
-| A1 | 505 Mpx/s | ≈ one 4K60 stream; comfortable for demosaic + AV1 |
-| B1/B2 | 757 / 908 Mpx/s | 2 AV1 10-bit sessions; may approach the GPU's NVENC AV1 limit — **measure** |
-| C1 | 750 Mpx/s | 4 sessions × 3.1 MP × 60 fps |
+| A1 | 404 Mpx/s | ≈ one 4K48 stream; comfortable for demosaic + AV1 |
+| B1/B2 | 758 / 808 Mpx/s | 2 AV1 10-bit sessions; may approach the GPU's NVENC AV1 limit — **measure** |
+| C1/C3 | 758 / 909 Mpx/s | 4 sessions × 12.6 MP × 15–18 fps |
 
 NVENC (Ada generation or newer): AV1/HEVC/H.264, 8- and 10-bit 4:2:0. Engine count, concurrent-session
 limits and AV1 throughput are GPU-specific and are measured on the test machine in M3. NVENC input
@@ -289,34 +302,44 @@ output: {dir: /data/captures, ivf: true, stats_csv: true}
 
 ## 7. IMX676 sensor driver
 
-Files: `hsb/sensors/imx676/{imx676_mode.hpp, tca6408.{hpp,cpp}, native_imx676_sensor.{hpp,cpp}}` plus a
-Python twin used only during bring-up in the vendor container (`imx676.py`, `imx676_mode.py`).
+Files: `hsb/sensors/imx676/{imx676_regs.hpp, imx676_mode.{hpp,cc}, imx676_tables.{hpp,cc},
+tca6408.{hpp,cc}, p22_adapter.{hpp,cc}, native_imx676_sensor.{hpp,cc}}` (M2, built and exercised
+against the emulator) plus a Python twin used only during bring-up in the vendor container
+(`imx676.py`, `imx676_mode.py`, M1). The register model was cross-checked against the FRAMOS reference
+driver and the user's hardware-validated notes (`jetson-thor-carrier-bringup`, RAW12 4-lane 30 fps).
 
 Class: `NativeImx676Sensor : hololink::sensors::CameraSensor` (`configure(mode)`, `start()`, `stop()`,
 `configure_converter()`, `pixel_format()`, `bayer_format()`), I2C address 0x1A, register writes as
 16-bit address + 8-bit data via `Hololink::get_i2c(CAM_I2C_BUS + k)->i2c_transaction(...)`.
 
-Modes (all 4-lane, lane rate 1440 Mbps; fps chosen via VMAX):
+Modes (all 4-lane; the lane rate is the fastest one the rules in §4.1 allow under the receiver's
+D-PHY limit, `HMAX` follows the lane rate, fps is chosen via `VMAX`; `PlanTiming()` does the math):
 
-| Mode id | Readout | Output | Bits | Max fps (est.) |
-|---|---|---|---|---|
-| `FULL_RAW10` | all-pixel | 3552×3552 | 10 | ~40 |
-| `FULL_RAW12` | all-pixel | 3552×3552 | 12 | 30 |
-| `BIN2_RAW10` | 2/2 binning | 1768×1768 | 10 | 60 |
-| `BIN2_RAW12` | 2/2 binning | 1768×1768 | 12 | 60 |
-| `CROP_720P_RAW10` | window crop | 1280×720 | 10 | ≥ 60 (1G tests) |
+| Mode id | Readout | Output | Bits | Lane rate on DA322 | Max fps on DA322 |
+|---|---|---|---|---|---|
+| `FULL_RAW10` | all-pixel | 3552×3556 | 10 | 1188 Mbps | 32.6 |
+| `FULL_RAW12` | all-pixel | 3552×3556 | 12 | 1440 Mbps | 32.6 |
+| `BIN2_RAW12` | 2×2 binning (10-bit AD, 12-bit out; no 10-bit binned output exists) | 1776×1778 | 12 | 891 Mbps | 32.6 |
+| `CROP_3552X2160_RAW10` | vertical window | 3552×2160 | 10 | 1188 Mbps | 53 |
+| `CROP_1280X720_RAW10` | centred window | 1280×720 | 10 | 1188 Mbps | 149 (1G tests) |
 
-Register groups (Sony STARVIS 2 family layout; exact values from the FRAMOS-supplied IMX676 datasheet):
-standby/stream (`STANDBY`, `XMSTA`, `REGHOLD`), interface (`LANEMODE`, `DATARATE_SEL`, INCK select for
-37.125 MHz), readout (`WINMODE`, `ADDMODE`, `ADBIT`/`MDBIT`, crop window), timing (`HMAX`, `VMAX`,
-`SHR0` exposure), gain, embedded-data enable, sync (`XVS/XHS` direction for later multi-camera sync).
-The FRAMOS GPL Jetson driver (`framosimaging/framos-jetson-drivers`) is a cross-check for register
-*values* only; no code is copied. Also check `framosimaging/framos-holoscan-drivers` (HSB 2.0.0-era,
-Apache-2.0) for an existing FSM:GO driver before writing ours.
+Register groups (`imx676_regs.hpp`, Sony STARVIS 2 layout): standby/stream (`STANDBY`, `XMSTA`,
+`REGHOLD`), interface (`LANEMODE` = 4 lanes, `DATARATE_SEL`, `INCK_SEL` = 0x01 for the module's
+37.125 MHz oscillator), readout (`WINMODE`, `ADDMODE`, `ADBIT`/`MDBIT`, `PIX_*` window), timing (`HMAX`,
+`VMAX`, `SHR0` exposure = VMAX − lines, min 8), gain (`GAIN_0`, 0.3 dB steps to 72 dB), black level
+(`BLKLEVEL`, 10-bit units, default 50 → optical black 50/200 for RAW10/RAW12), test pattern (`TPG_*`),
+sync (`XVS/XHS`, later multi-camera sync). `imx676_tables.cc` holds the vendor's fixed initial-settings
+block and the bit-depth / readout tables; check them against the datasheet FRAMOS supplies. Programming
+order (`configure()`): P22 power-up → probe → init block → bit-depth block → readout table (+ window) →
+`DATARATE_SEL` → `HMAX`/`VMAX` → exposure/gain/black level; `start()` = `STANDBY` 0, 30 ms, `XMSTA` 0;
+`stop()` = `XMSTA` 1, 30 ms, `STANDBY` 1.
 
-Bring-up sequence per port: TCA6408 (0x20) configure outputs → sensor power enable → reset low
-≥ 180 ms → release → read chip/revision registers → write mode table → `XMSTA` start → verify
-`MIPI_DT_STAT` byte k shows 0x2B/0x2C and `bytes_written` matches `csi_length`.
+Bring-up sequence per port: TCA6408 (0x20) configure outputs → sensor power enable → reset low →
+release, wait ≥ 180 ms → probe (`STANDBY` reads back) → write tables → `XMSTA` start → verify
+`MIPI_DT_STAT` byte k shows 0x2B/0x2C and `bytes_written` matches `csi_length`. FPA-A/P22-V2 expander
+pins (FRAMOS docs): P0/P1 PW_EN_0/1, P2 RST_0 (high = run), P3 XMASTER0 (low = master, per the FRAMOS
+driver), P4–P6 SLAMODE0–2 (000 → 0x1A), P7 TENABLE; encoded in `p22_adapter.hpp`, to be confirmed on
+the bench with `hsbctl i2c --bus 4 --addr 0x20`.
 
 Converter math (`configure_converter`): `start_byte = converter.receiver_start_byte() +
 embedded_lines × line_bytes`, `line_bytes = round_up(W × bpp / 8, 8)`,
@@ -366,25 +389,31 @@ camera-fpga-dev/
 │   ├── bringup/         host_setup.md (ConnectX, sysctl, PTP), flashing.md (JTAG, OTA), first_light.md
 │   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path, ADR-0003 AV1/IVF, ADR-0004 Bazel 9
 ├── tools/workspace/     one directory per external dependency: repository.bzl (pinned fetch) + package.BUILD.bazel; default.bzl = module extension; archive.bzl helper
-│   ├── holoscan/        holoscan.BUILD → /opt/nvidia/holoscan (new_local_repository)
-│   ├── hololink/        hololink.BUILD + patches/0001-taurotech-da322-v1.2.1-pb.patch, 0002-… (ours)
-│   └── nv_codec_headers/BUILD (http_archive n13.0.19.1)
+│   ├── holoscan/        Holoscan SDK 3.9.0 from source: package.BUILD.bazel + patches/ (proto includes, Vulkan-Hpp 1.4)
+│   ├── hololink/        HSB 2.5.0-PB6 from source: package.BUILD.bazel + patches/0001 (Tauro DA322), 0002 (fmt 11)
+│   ├── rdma_core/       libibverbs headers (RoCE receiver)
+│   ├── rules_cuda/      patches for rules_cuda (device link, @cuda//:nvrtc_builtins)
+│   ├── gxf/ ucx/ rmm/ … remaining Holoscan dependencies (tools/workspace/README.md)
+│   └── nv_codec_headers/ NVENC API headers (n13.0.19.1)
 ├── tools/
 │   ├── host/            sysctl.d/52-hololink-rmem_max.conf, net_setup.sh, ptp4l/phc2sys units, hsb-ptp.conf, connectx_check.sh
+│   ├── emulator/        loopback.sh — runs emu_source + a receiver app in a private user/net namespace (raw sockets without sudo)
 │   ├── bazel/           radiant.bzl (radiant_bitstream + @radiant repo rule), verilator.bzl, cocotb.bzl
 │   └── py/              pyproject.toml, requirements.lock.txt (rules_python uv lock), analysis/ (CSV → plots)
+├── configs/             rig YAMLs: da322_1cam.yaml, da322_4cam.yaml, emulator_loopback.yaml
 ├── hsb/
-│   ├── board/da322/     da322_regs.hpp, da322_board.{hpp,cpp}, tests/
-│   ├── sensors/imx676/  imx676_mode.hpp, tca6408.{hpp,cpp}, native_imx676_sensor.{hpp,cpp}, tests/
-│   ├── encode/          nvenc_session.{hpp,cpp}, ivf_writer.{hpp,cpp}, tests/ (nvenc_smoke_test requires-gpu)
-│   ├── ops/             rgba16_to_p010/ (cuda_library), nvenc_av1_op/, ivf_writer_op/, frame_stats_op/, frame_check_op/
-│   └── cli/hsbctl/      enumerate | rd | wr | i2c | lanes | dt | ptp
+│   ├── board/da322/     da322_regs.hpp, da322_board.{hpp,cc} (lanes, data-type filter, port↔sensor↔I2C map, identity), test
+│   ├── sensors/imx676/  imx676_regs.hpp, imx676_mode/tables (pure, tested), tca6408, p22_adapter, native_imx676_sensor
+│   ├── pipeline/        rig_config (YAML) + camera_rig (control plane, per-camera Holoscan chain builder)
+│   ├── encode/          nvenc_session.{hpp,cc}, ivf.{hpp,cc}, tests (nvenc_smoke_test requires-gpu)
+│   ├── ops/             frame_stats_op (fps/Gbps/gaps/latency/CSV), frame_check_op (JAMCRC vs FPGA crc); M3 adds rgba16_to_p010, nvenc_av1_op
+│   └── cli/hsbctl/      enumerate | info | rd | wr | i2c | lanes | dt | ptp | reset | sensor
 ├── apps/
 │   ├── hello_cuda/  hello_holoscan/   toolchain smoke tests
-│   ├── cam_player/      N cameras → Holoviz
-│   ├── bandwidth_test/  receive-only stats with pass/fail thresholds, CSV
-│   ├── cam_encode/      N cameras → NVENC AV1 → IVF
-│   └── emu_source/      hololink emulator wrapper: synthetic RAW frames at a target Gbps (no-FPGA tests)
+│   ├── cam_player/      N cameras → Holoviz grid (--receiver roce|linux, --headless)
+│   ├── bandwidth_test/  receive-only stats with pass/fail thresholds, CSV + JSON summary
+│   ├── cam_encode/      N cameras → NVENC AV1 → IVF (M3)
+│   └── emu_source/      HSB emulator posing as a DA322 with emulated IMX676/TCA6408 I2C peripherals (no-FPGA tests)
 ├── fpga/
 │   ├── README.md        Radiant flow, license, IP catalog list, programming
 │   ├── boards/da322/    da322.pdc, da322.sdc, board_params.svh ;  boards/custom_v1/ (later)
@@ -431,7 +460,6 @@ use_repo(camera_fpga_dev_repositories, "dlpack", "eigen", "gxf", "holoscan_sdk",
 
 `.bazelrc` essentials: `-c opt`, C++20, `--action_env=CC=/usr/bin/gcc-13`, pinned `PATH`,
 `--@rules_cuda//cuda:archs=<list>` (one entry per GPU architecture in `docs/machines.md`),
-`--define=hololink_gpu_vram=on` (GPUDirect receive; hololink falls back to pinned host memory at runtime),
 disk/repository caches under `~/.cache/bazel/`, and tags `requires-gpu` / `requires-hw` / `requires-radiant`
 excluded from the default `bazel test //...` where appropriate (`--config=nogpu`).
 
@@ -551,7 +579,16 @@ bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
 - Direct PixelMate (Hirose DF40C-60) connectors for FSM:GO, no P22 adapters; dedicated 3.8 V / 1.8 V
   rails with sequencing (1V8 first or simultaneous), per-camera power switches and current sense.
 - Route XVS/XHS/XMASTER of all cameras to FPGA GPIO for hardware frame sync; keep 11-GPIO MFP concept.
-- D-PHY stays at 1.5 Gbps/lane (FPGA limit): ~40 fps full-res RAW10 per camera regardless of link.
+- D-PHY stays at 1.5 Gbps/lane with this FPGA family, on any board: CertusPro-NX has **no hardened
+  D-PHY** (datasheet FPGA-DS-02086 §2.13.4 lists only the soft D-PHY: 1500 Mbps/lane in ASG/CBG/LFG
+  packages, 1250 in BBG/BFG; Table 3.29 and the DDRX4 timing table give 1500 Mbps for the −9 speed
+  grade, 1200 for −8, 1034 for −7). Full-frame 10-bit at 60 fps needs the IMX676's 2376 Mbps/lane
+  setting (9.5 Gbps per camera, 7.58 Gbps of pixels), which no CertusPro-NX can receive; the
+  achievable ceiling stays 32.6 fps (RAW10 at 1188 Mbps, RAW12 at 1440). Reaching 60 fps 10-bit means
+  a device with a ≥ 2.5 Gbps/lane hard D-PHY in the camera path, e.g. a CrossLink-NX (LIFCL, hardened
+  D-PHY 2.5 Gbps/lane, 10 Gbps per instance) bridging CSI-2 into the CertusPro-NX at a lower per-lane
+  rate over more lanes, or a different main FPGA; Lattice Avant's hard D-PHY (1.8 Gbps) is not enough.
+  One such camera would carry ~8.1 Gbps on the 10G link, so two need a second data plane.
 - Lift the single-link cap: CertusPro-NX has multiple 10G-capable SERDES lanes and the HSB IP supports
   multiple host interfaces (data planes) → 2–4 SFP+ / 10GBASE-KR ports (4 × 5 Gbps = 20 Gbps).
 - Keep the same register semantics (`MIPI_DT_CTRL`, lane setting) so `hsb/board/*` differs only in constants.

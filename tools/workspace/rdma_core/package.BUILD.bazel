@@ -1,0 +1,36 @@
+# -*- mode: bazel -*-
+# libibverbs public headers (libibverbs/CMakeLists.txt publish_headers) plus the
+# kernel ABI headers they include, both exposed as <infiniband/...>.
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "kernel_headers",
+    hdrs = glob(["kernel-headers/rdma/*.h"]),
+    include_prefix = "infiniband",
+    strip_include_prefix = "kernel-headers/rdma",
+)
+
+cc_library(
+    name = "ibverbs_headers",
+    hdrs = [
+        "libibverbs/arch.h",
+        "libibverbs/opcode.h",
+        "libibverbs/sa.h",
+        "libibverbs/sa-kern-abi.h",
+        "libibverbs/tm_types.h",
+        "libibverbs/verbs.h",
+        "libibverbs/verbs_api.h",
+    ],
+    include_prefix = "infiniband",
+    strip_include_prefix = "libibverbs",
+    deps = [":kernel_headers"],
+)
+
+# Headers + the host's libibverbs.so.1 (runtime library of the RDMA stack).
+cc_library(
+    name = "ibverbs",
+    linkopts = ["-l:libibverbs.so.1"],
+    deps = [":ibverbs_headers"],
+)

@@ -1,0 +1,97 @@
+Vulkan-Hpp >= 1.4.304 moved resultCheck() and friends into vk::detail; Holoscan 3.9.0's
+Holoviz still calls them in the vk namespace. (vulkan_headers 1.4.349 from the BCR.)
+
+--- a/modules/holoviz/src/glfw_window.cpp
++++ b/modules/holoviz/src/glfw_window.cpp
+@@ -677,7 +677,7 @@
+   VkSurfaceKHR surface;
+   const vk::Result result =
+       vk::Result(glfwCreateWindowSurface(instance, impl_->window_, nullptr, &surface));
+-  vk::resultCheck(result, "Failed to create glfw window surface");
++  vk::detail::resultCheck(result, "Failed to create glfw window surface");
+   return surface;
+ }
+ 
+--- a/modules/holoviz/src/vulkan/vulkan_app.cpp
++++ b/modules/holoviz/src/vulkan/vulkan_app.cpp
+@@ -826,7 +826,7 @@
+   // submit staged transfers
+   const vk::Result result =
+       vk::Result(nvvk_.transfer_batch_submission_.execute(transfer_job.fence_.get(), 0b0000'0001));
+-  vk::resultCheck(result, "Failed to execute batch submission");
++  vk::detail::resultCheck(result, "Failed to execute batch submission");
+ 
+   // next graphics submission must wait for transfer completion
+   nvvk_.batch_submission_.enqueueWait(transfer_job.semaphore_.get(),
+@@ -895,7 +895,7 @@
+ 
+         it->fence_triggered_ = true;
+       } else if (result != vk::Result::eNotReady) {
+-        vk::resultCheck(result, "Failed to get upload fence status");
++        vk::detail::resultCheck(result, "Failed to get upload fence status");
+       }
+     }
+ 
+@@ -913,7 +913,7 @@
+           it = next;
+           continue;
+         } else if (result != vk::Result::eNotReady) {
+-          vk::resultCheck(result, "Failed to get frame fence status");
++          vk::detail::resultCheck(result, "Failed to get frame fence status");
+         }
+       } else {
+         // this is a stale transfer buffer (no end_transfer_pass()?), remove it
+@@ -946,7 +946,7 @@
+   if (result != vk::Result::eSuccess) {
+     // This allows Aftermath to do things and exit below
+     usleep(1000);
+-    vk::resultCheck(result, "Failed to wait for frame fences");
++    vk::detail::resultCheck(result, "Failed to wait for frame fences");
+     exit(-1);
+   }
+ 
+@@ -978,7 +978,7 @@
+ 
+   const vk::Result result =
+       vk::Result(nvvk_.batch_submission_.execute(wait_fences_[image_index].get(), 0b0000'0001));
+-  vk::resultCheck(result, "Failed to execute batch submission");
++  vk::detail::resultCheck(result, "Failed to execute batch submission");
+ 
+   // Presenting frame
+   fb_sequence_->present(queue_gct_);
+@@ -2251,7 +2251,7 @@
+     if (result != vk::Result::eSuccess) {
+       // This allows Aftermath to do things and exit below
+       usleep(1000);
+-      vk::resultCheck(result, "Failed to wait for frame fences");
++      vk::detail::resultCheck(result, "Failed to wait for frame fences");
+       exit(-1);
+     }
+ 
+@@ -2308,7 +2308,7 @@
+   // submit the command buffer
+   const vk::Result result =
+       vk::Result(nvvk_.batch_submission_.execute(read_job.fence_.get(), 0b0000'0001));
+-  vk::resultCheck(result, "Failed to execute batch submission");
++  vk::detail::resultCheck(result, "Failed to execute batch submission");
+ 
+   // copy the buffer to CUDA memory
+   {
+@@ -2396,7 +2396,7 @@
+   if (result == vk::Result::eTimeout) {
+     return false;
+   }
+-  vk::resultCheck(result, "Failed to wait for present");
++  vk::detail::resultCheck(result, "Failed to wait for present");
+   return true;
+ }
+ 
+@@ -2420,7 +2420,7 @@
+   if (result == vk::Result::eTimeout) {
+     return false;
+   }
+-  vk::resultCheck(result, "Failed to wait for display event");
++  vk::detail::resultCheck(result, "Failed to wait for display event");
+   return true;
+ }
+ 

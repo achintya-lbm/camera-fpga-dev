@@ -356,9 +356,14 @@ SHADERS = [
 [
     genrule(
         name = "spv_" + shader.replace(".", "_"),
-        srcs = [VIZ + "/vulkan/shaders/" + shader],
+        srcs = [
+            VIZ + "/vulkan/shaders/" + shader,
+            # #include "push_constants.hpp" (GL_GOOGLE_include_directive) resolves next to the shader.
+            VIZ + "/vulkan/shaders/push_constants.hpp",
+        ],
         outs = [VIZ + "/vulkan/spv/" + shader + ".h"],
-        cmd = "$(execpath @glslang//:glslang_bin) -g --target-env vulkan1.2 --vn {var} -o $@ $<".format(
+        cmd = "$(execpath @glslang//:glslang_bin) -g --target-env vulkan1.2 --vn {var} -o $@ $(execpath {src})".format(
+            src = VIZ + "/vulkan/shaders/" + shader,
             var = shader.replace(".", "_"),
         ),
         tools = ["@glslang//:glslang_bin"],

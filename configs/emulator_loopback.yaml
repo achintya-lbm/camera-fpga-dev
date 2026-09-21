@@ -1,0 +1,13 @@
+# No-FPGA loopback on one machine: apps/emu_source on 127.0.0.1 feeding the Linux receiver.
+hololink_ip: 127.0.0.1
+receiver: linux
+cuda_device: 0
+lane_rate_limit_mbps: 1500
+report_interval_s: 1.0
+require_da322: true     # emu_source advertises the DA322 board id / UUID
+reset_board: true
+p22:
+  enabled: false        # the emulator has no power expander
+cameras:
+  - {port: J1A, mode: CROP_1280X720_RAW10, fps: 30}
+  - {port: J1B, mode: CROP_1280X720_RAW10, fps: 30}

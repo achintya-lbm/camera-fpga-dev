@@ -1,0 +1,17 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# Receive-only throughput/integrity test (RoCE needs a Mellanox NIC; see docs/machines.md).
+cc_binary(
+    name = "bandwidth_test",
+    srcs = ["main.cc"],
+    deps = [
+        "//hsb/pipeline:camera_rig",
+        "//hsb/pipeline:rig_config",
+        "//hsb/sensors/imx676:imx676_mode",
+        "@cli11",
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+    ],
+)

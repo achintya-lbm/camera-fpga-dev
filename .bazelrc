@@ -26,10 +26,6 @@ test --test_env=LD_LIBRARY_PATH=
 build --@rules_cuda//cuda:archs=sm_89,sm_120
 build --@rules_cuda//cuda:compiler=nvcc
 
-# hololink receive path: GPUDirect (GPU VRAM) by default; hololink falls back to
-# pinned host memory at runtime on GPUs without DMA-BUF support.
-build --define=hololink_gpu_vram=on
-
 # Targets that need the DA322/cameras or Lattice Radiant never build by default.
 build --build_tag_filters=-requires-hw,-requires-radiant
 test --test_tag_filters=-requires-hw,-requires-radiant

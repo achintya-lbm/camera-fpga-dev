@@ -5,6 +5,84 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 — Can the LFCPNX-100-9CBG256I run the IMX676 at 60 fps 10-bit? No.
+
+Checked against the CertusPro-NX Family Data Sheet FPGA-DS-02086-2.2 (Jan 2025) and the High-Speed I/O
+technical note FPGA-TN-02244-1.5 (copies under `/tmp/ref/lattice`, not in the repo):
+- §2.13.4 "MIPI D-PHY Support": the programmable I/O is configured as a **soft** D-PHY; "up to 6 Gbps per
+  port (1500 Mbps data rate per lane) in ASG/CBG/LFG package, up to 5 Gbps per port (1250 Mbps) in other
+  packages". The word "hardened" appears in the datasheet only for PCIe, the SGMII CDR and I2C; there is
+  no hard D-PHY in any CertusPro-NX package, CBG256 included. The TN's D-PHY module only offers
+  "Soft MIPI DPHY". My 2026-09-21 message claiming a 2.5 Gbps hardened D-PHY for CertusPro-NX was wrong;
+  that figure belongs to CrossLink-NX (LIFCL).
+- Table 3.29 (max sysI/O buffer speed): MIPI D-PHY HS mode 1500 Mbps (1250 in wire-bond packages);
+  DDRX4 soft D-PHY input bit rate 1500 / 1200 / 1034 Mbps for −9 / −8 / −7; D-PHY timing specified only
+  up to 1.50 Gbps. Our part is −9 CBG256 → 1500 Mbps/lane, exactly what the DA322 manual quotes.
+- The IMX676 needs `DATARATE_SEL` 2376 Mbps × 4 lanes (HMAX 318) for 64 fps at full frame 10-bit;
+  7.58 Gbps of pixels cannot fit 4 × 1.5 = 6 Gbps of D-PHY whatever the RTL does. Conclusion: 60 fps
+  full-frame 10-bit is impossible on the DA322 *and* on any custom board built around this FPGA family;
+  the ceiling stays 32.6 fps. DESIGN §16 updated with the options (CrossLink-NX hard D-PHY bridge at
+  2.5 Gbps/lane, or a different main FPGA; Avant's hard D-PHY at 1.8 Gbps is also too slow).
+
+## 2026-09-18 — M2: C++ camera stack built and verified against the HSB emulator
+
+**Done**
+- `tools/workspace/hololink` builds holoscan-sensor-bridge 2.5.0-PB6 (+ Tauro patch) from source against the
+  Bazel-built Holoscan: core, sensors, common, receivers (Linux + RoCE), csi_to_bayer, image_processor,
+  packed_format_converter, emulation. `tools/workspace/rdma_core` provides the libibverbs headers.
+- New patches, all build-system-only: hololink `0002` (fmt 11 removed `fmt::char_t`), hololink `0003`
+  (`HOLOLINK_NVRTC_INCLUDE_PATHS` instead of hard-coded `/usr/local/cuda/include`), holoscan `0002`
+  (Vulkan-Hpp ≥ 1.4.304 moved `vk::resultCheck` to `vk::detail`), rules_cuda `0003`
+  (`@cuda//:nvrtc_builtins`), Holoviz shader genrules now list `push_constants.hpp` as an input.
+- `hsb/board/da322` (registers, lanes, data-type filter, port ↔ sensor ↔ I2C map, identity),
+  `hsb/sensors/imx676` (register map, mode catalogue + lane-rate/HMAX/VMAX/SHR0/gain math, vendor tables,
+  TCA6408, P22 power sequence, `NativeImx676Sensor`), `hsb/pipeline` (YAML rig config, `CameraRig`:
+  enumeration, one DataChannel + driver per camera, per-camera Holoscan chain, event-based scheduler),
+  `hsb/ops` (`FrameStatsOp`, `FrameCheckOp`), `hsb/cli/hsbctl`, `apps/emu_source`, `apps/cam_player`,
+  `apps/bandwidth_test`, `configs/*.yaml`, `tools/emulator/loopback.sh`. `bazel test //...`: 8 targets pass.
+
+**Results** (dev box; emulator + receiver in a private user/network namespace, Linux receiver, GPU VRAM)
+- `bandwidth_test`, 2 emulated cameras `CROP_1280X720_RAW10` @ 30 fps, 10 s: 29.97 fps and 0.276 Gbps per
+  camera, 0 frame-number gaps, 0 drops, PASS; CSV per camera + JSON summary written.
+- `hsbctl` against the emulated DA322: enumerate, info (board id 9, `hsb_ip_version` 0x2511), rd/wr, i2c,
+  lanes (`0x30002028 = 0x6`), dt (`0x70000004` byte per port), ptp, reset, `sensor probe/configure/rd` all
+  behave; the driver's configure() issued 164 register writes per sensor, mirrored by the emulated IMX676.
+- `cam_player --headless`, 2 cameras: receiver → stats → CSI-to-Bayer → ISP (NVRTC JIT) → demosaic →
+  Holoviz grid runs; 239 frames per camera in 8.3 s. ~57 "Push failed" queue-full warnings while Holoviz
+  creates the Vulkan device at start-up (frames dropped downstream of the receiver only; cosmetic).
+- Starved camera (emulator with 1 camera, 2 configured): the other camera keeps 30 fps and the run ends with
+  FAIL for the silent one. With Holoscan's default greedy scheduler the silent receiver's 1 s timeout
+  stalled every camera to ~1 fps — hence `EventBasedScheduler` in both apps.
+
+**Findings**
+- IMX676 lane-rate rules (FRAMOS driver, hardware-confirmed by the user's Jetson bring-up repo): 4-lane
+  all-pixel 10-bit is *not* valid at 1440 Mbps → 1188 Mbps on the DA322; 12-bit → 1440; 2×2 binning
+  outputs 12-bit only → 891. The lane rate fixes `HMAX` (628 → 8.458 µs line) and `VMAX` ≥ lines + 72 with
+  binning still scanning 2× lines, so every 3556-line readout caps at **32.6 fps**. Single camera maximum is
+  `FULL_RAW12` @ 32 fps ≈ 4.85 Gbps; the earlier "~40 fps RAW10 / 60 fps binned" numbers were wrong.
+  DESIGN §4.1/§4.3/§7 and `docs/bandwidth.md` revised (B1 = 2 × RAW12 @ 30, C1 = 4 × RAW12 @ 15,
+  C3 = 4 × RAW10 @ 18 saturate 10G; D1/D3 use `BIN2_RAW12`).
+- The `fr_imx676*` sources in `jetson-thor-carrier-bringup` are byte-identical to FRAMOS upstream; validated
+  there: INCK 37.125 MHz with `INCK_SEL 0x01`, RAW12 4-lane 30 fps, `embedded_metadata_height = 1` (one
+  embedded-data line → the DA322 data-type filter should drop it; `leading_lines: 0` until M1 measures).
+- FPA-A/P22 expander bit assignment is still unknown → placeholders in `p22_adapter.hpp`.
+- Bazel's built-in patcher fails on the vendor patch (mid-hunk "\ No newline at end of file") and on
+  multi-file patches without `diff --git` headers → archive repos use `patch_tool = "patch"`;
+  `single_version_override` patches (rules_cuda) must be git-format.
+- `libnvrtc` dlopen()s `libnvrtc-builtins.so.13.0` by name and hololink's `CudaFunctionLauncher` needs the
+  CUDA headers at runtime: solved hermetically (builtins linked as NEEDED; header directories shipped as
+  runfiles and resolved through `rules_cc` runfiles into `HOLOLINK_NVRTC_INCLUDE_PATHS`).
+- The emulator's Linux data plane opens a raw IP socket (CAP_NET_RAW); `unshare -Urn` grants it without
+  sudo and keeps the HSB ports off the LAN, CUDA keeps working inside. The emulator reports `crc = 0`, so
+  `frame_check_op` counts "crc unavailable" in loopback; real CRC checks need the FPGA.
+- `--define=hololink_gpu_vram=on` removed: at 2.5.0-PB6 the receivers always allocate with `cuMemAlloc`.
+- Holoviz merging several cameras' metadata raises on duplicate keys → `MetadataPolicy::kUpdate`.
+
+**Next**
+- M1 on the test machine: host setup, `hsbctl enumerate/info`, P22 pin map with `hsbctl i2c`,
+  `hsbctl sensor --port J1A probe`, first light with `cam_player --config configs/da322_1cam.yaml`; validate
+  HMAX minimums and embedded-data handling; then the M2 exit (4 cameras over RoCE) and M3 (NVENC path).
+
 ## 2026-09-18 — Build redirection: no containers, Holoscan from source
 
 **Trigger** (user): "why is there a dev container in place? Can we just not compile on our own computer

@@ -1,0 +1,37 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Per-frame statistics from the hololink receiver metadata (fps, Gbps, gaps, drops, latency, CSV).
+cc_library(
+    name = "frame_stats_op",
+    srcs = ["frame_stats_op.cc"],
+    hdrs = ["frame_stats_op.hpp"],
+    deps = [
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+# CRC / size verification against the FPGA-provided metadata.
+cc_library(
+    name = "frame_check_op",
+    srcs = ["frame_check_op.cc"],
+    hdrs = ["frame_check_op.hpp"],
+    deps = [
+        "@cuda//:cuda_runtime",
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+        "@zlib",
+    ],
+)
+
+cc_test(
+    name = "frame_check_test",
+    size = "small",
+    srcs = ["frame_check_test.cc"],
+    deps = [
+        ":frame_check_op",
+        "@googletest//:gtest_main",
+    ],
+)

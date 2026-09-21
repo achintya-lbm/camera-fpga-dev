@@ -1,0 +1,18 @@
+# One IMX676 on J1A at the highest rate the DA322 D-PHY allows for 12-bit (matrix row A2).
+hololink_ip: 192.168.0.2
+receiver: roce          # roce | linux
+ibv_name: ""            # empty = first InfiniBand device (see docs/machines.md)
+ibv_port: 1
+cuda_device: 0
+lane_rate_limit_mbps: 1500
+report_interval_s: 2.0
+p22:
+  enabled: true         # sequence power/reset through the FPA-A/P22 expander
+  expander_address: 0x20
+cameras:
+  - port: J1A
+    mode: FULL_RAW12    # FULL_RAW10 | FULL_RAW12 | BIN2_RAW12 | CROP_3552X2160_RAW10 | CROP_1280X720_RAW10
+    fps: 30
+    lanes: 4
+    exposure_ms: 10
+    gain_db: 6

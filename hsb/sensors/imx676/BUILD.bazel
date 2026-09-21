@@ -1,0 +1,58 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Pure mode catalogue, timing math and register tables (no I/O; unit tested).
+cc_library(
+    name = "imx676_mode",
+    srcs = [
+        "imx676_mode.cc",
+        "imx676_tables.cc",
+    ],
+    hdrs = [
+        "imx676_mode.hpp",
+        "imx676_regs.hpp",
+        "imx676_tables.hpp",
+    ],
+    deps = [
+        "@fmt",
+        "@hololink//:core",
+    ],
+)
+
+# TCA6408 expander and the FRAMOS FPA-A/P22 power/reset sequence.
+cc_library(
+    name = "p22_adapter",
+    srcs = [
+        "p22_adapter.cc",
+        "tca6408.cc",
+    ],
+    hdrs = [
+        "p22_adapter.hpp",
+        "tca6408.hpp",
+    ],
+    deps = ["@hololink//:core"],
+)
+
+cc_library(
+    name = "imx676",
+    srcs = ["native_imx676_sensor.cc"],
+    hdrs = ["native_imx676_sensor.hpp"],
+    deps = [
+        ":imx676_mode",
+        ":p22_adapter",
+        "@fmt",
+        "@hololink//:camera_sensor",
+        "@hololink//:core",
+    ],
+)
+
+cc_test(
+    name = "imx676_mode_test",
+    size = "small",
+    srcs = ["imx676_mode_test.cc"],
+    deps = [
+        ":imx676_mode",
+        "@googletest//:gtest_main",
+    ],
+)

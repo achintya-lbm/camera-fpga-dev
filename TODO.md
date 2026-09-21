@@ -25,23 +25,29 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Fill in the test-machine facts in `docs/machines.md` (OS/kernel, GPU + compute capability, driver version, open kernel modules confirmed, NIC model + firmware, PCIe topology)
 - [ ] Vendor container: clone HSB, `git checkout 6930609`, apply patch, `docker/build.sh --dgpu`, `docker/demo.sh`
 - [ ] Enumerate DA322 (`tools/enumerate` / `hololink enumerate`): record UUID, board-id, `hsb_ip_version`, FPGA date; flash v2511 if different
-- [ ] Camera 1 on J1A via P22: `hs_ctl.py 0x30000028 --set 0x6` (4 lanes), `MIPI_DT_CTRL[7:0]=0x2B`; TCA6408 (0x20) power/reset sequence (≥180 ms); read IMX676 ID registers
+- [ ] Camera 1 on J1A via P22: `hs_ctl.py 0x30000028 --set 0x6` (4 lanes), `MIPI_DT_CTRL[7:0]=0x2B`; TCA6408 (0x20) power/reset sequence (≥180 ms); read IMX676 ID registers (or `hsbctl sensor --port J1A probe` from the Bazel build)
+- [ ] Confirm the FPA-A/P22-V2 TCA6408 bit assignment on the bench (FRAMOS docs: P0/P1 power enables, P2 reset, P3 XMASTER, P4–P6 SLAMODE, P7 TENABLE; now in `p22_adapter.hpp`) with `hsbctl i2c --bus 4 --addr 0x20` and `hsbctl sensor --port J1D probe`
 - [ ] Check `framosimaging/framos-holoscan-drivers` and `framos-jetson-drivers` for IMX676 tables (reference only)
-- [ ] Python IMX676 driver in the vendor container (`imx676.py`, `imx676_mode.py`): FULL_RAW10 (~40 fps @ 1440 Mbps/lane), FULL_RAW12 30, BIN2_RAW10/12 60, CROP_720P_RAW10
+- [ ] Python IMX676 driver in the vendor container (`imx676.py`, `imx676_mode.py`) mirroring `hsb/sensors/imx676`: FULL_RAW10 @ 1188 Mbps (≤ 32.6 fps), FULL_RAW12 30 @ 1440 Mbps, BIN2_RAW12 @ 891 Mbps, CROP_3552X2160_RAW10, CROP_1280X720_RAW10
+- [ ] Validate the HMAX minimum per lane rate against the Sony datasheet (10-bit at 1188 Mbps may allow < 628 → higher FULL_RAW10 fps); confirm INCK_SEL 0x01 / 37.125 MHz (FRAMOS: 37.125 MHz on-board clock) and the fixed init block
+- [ ] Binning experiments (FRAMOS's driver is conservative: VMAX ≥ 3556 + 72 and HMAX 628 in BIN2 at 891 Mbps → 32.6 fps, while Sony quotes 240 fps for binned 1080p): try VMAX = 1778 + 72 = 1850 and smaller HMAX in `BIN2_RAW12`, check frame_number continuity / bytes_written; try MDBIT = 0 (10-bit output) with ADDMODE = 1 and see whether the DT filter sees 0x2B and images are sane
 - [ ] Determine embedded-data lines / `start_byte` from `bytes_written` with and without the DT filter
 - [ ] First light: `linux_imx676_player.py`; then 4 ports via `multi_player.py`-style config; confirm J1A..J1D ↔ sensor_id ↔ I2C bus mapping and CAM_EN polarity
 - [ ] Measure 3.3 V current per camera port; record link stats, PTP offset
+- [ ] Confirm the DA322 data-type filter drops the IMX676 embedded-data line (`leading_lines: 0`), else set `leading_lines` in the rig config
 - [ ] Exit: stable video on 4 ports at a low-bandwidth mode; `docs/hardware/imx676_modes.md` written
 
 ## M2 — Bazel C++ stack
-- [ ] `tools/workspace/hololink` overlay builds core + sensors + operators (roce_receiver, linux_receiver, csi_to_bayer, image_processor, packed_format_converter) against container Holoscan; `HOLOLINK_ROCE_USE_GPU_VRAM` as Bazel setting
-- [ ] `hsb/board/da322`: `da322_regs.hpp`, `Da322Board` (configure_port lanes/dt, dt status, port↔sensor↔i2c map, enumeration/UUID check)
-- [ ] `hsb/sensors/imx676`: `Tca6408`, `NativeImx676Sensor : CameraSensor`, mode tables ported from M1; unit tests for csi_length/start_byte and mode sanity
-- [ ] `hsb/cli/hsbctl`: enumerate | rd | wr | i2c | lanes | dt | ptp
-- [ ] `hsb/ops/frame_stats_op`, `hsb/ops/frame_check_op` (CRC vs metadata, PSN gaps, bytes_written)
-- [ ] `apps/cam_player` (YAML config, `--receiver roce|linux`, N cameras → Holoviz)
-- [ ] `apps/bandwidth_test` (receive-only, CSV, pass/fail thresholds)
-- [ ] Exit: Bazel-built `cam_player` shows 1 and 4 cameras via RoCE on the test machine; bandwidth CSV produced
+- [x] `tools/workspace/hololink` overlay builds core + sensors + common + operators (roce_receiver, linux_receiver, csi_to_bayer, image_processor, packed_format_converter) + emulation from source against the Bazel-built Holoscan (fmt 11 patch; `@cuda//:nvrtc_builtins` for the NVRTC JIT). The GPU-VRAM define was dropped: hololink 2.5.0-PB6 always receives into `cuMemAlloc` memory
+- [x] `hsb/board/da322`: `da322_regs.hpp`, `Da322Board` (configure_port lanes/dt, dt status, port↔sensor↔i2c map, enumeration/UUID check) + unit test
+- [x] `hsb/sensors/imx676`: `Tca6408`, `P22Adapter`, `NativeImx676Sensor : CameraSensor`, mode catalogue with lane-rate rules and HMAX/VMAX/SHR0/gain math, register tables; 11 unit tests (timing ceilings, CSI layout, parsing)
+- [x] `hsb/pipeline`: YAML rig config + `CameraRig` (enumeration, DataChannel/sensor per camera, DA322 port setup, per-camera Holoscan chain, event-based scheduler)
+- [x] `hsb/cli/hsbctl`: enumerate | info | rd | wr | i2c | lanes | dt | ptp | reset | sensor (probe/rd/wr/power-up/configure) — every subcommand exercised against the emulated DA322
+- [x] `hsb/ops/frame_stats_op` (fps, Gbps, frame-number gaps, dropped counters, latency, CSV) and `frame_check_op` (host JAMCRC vs FPGA `crc`, bytes_written)
+- [x] `apps/cam_player` (YAML config, `--receiver roce|linux`, N cameras → one Holoviz window in a grid; headless run verified on the emulator)
+- [x] `apps/bandwidth_test` (receive-only, warm-up window, per-camera PASS/FAIL, CSV + JSON summary)
+- [x] `apps/emu_source` + `tools/emulator/loopback.sh`: HSB emulator posing as a DA322 with emulated IMX676/TCA6408 peripherals; 2-camera loopback at 30 fps passes with 0 gaps
+- [ ] Exit: Bazel-built `cam_player` shows 1 and 4 cameras via RoCE on the test machine; bandwidth CSV produced (needs M1 hardware bring-up first)
 
 ## M3 — GPU encode path (NVENC AV1)
 - [ ] `hsb/ops/rgba16_to_p010` CUDA kernel (RGBA16 → P010/NV12, BT.709 limited) + CPU-reference test

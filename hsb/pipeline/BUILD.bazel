@@ -1,0 +1,91 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "rig_config",
+    srcs = ["rig_config.cc"],
+    hdrs = ["rig_config.hpp"],
+    deps = [
+        "//hsb/board/da322",
+        "//hsb/sensors/imx676:imx676_mode",
+        "@fmt",
+        "@yaml-cpp",
+    ],
+)
+
+# Runfiles-relative CUDA include directories for hololink's NVRTC kernels (device_atomic_functions.h,
+# cooperative_groups.h, crt/*.h, cccl). One rlocation path per line, resolved at runtime.
+genrule(
+    name = "nvrtc_include_dirs",
+    srcs = [
+        "@cuda//:cccl_all_files",
+        "@cuda//:crt_all_files",
+        "@cuda//:cudart_all_files",
+    ],
+    outs = ["nvrtc_include_dirs.txt"],
+    cmd = """
+        for f in $(rootpaths @cuda//:cudart_all_files) $(rootpaths @cuda//:crt_all_files) $(rootpaths @cuda//:cccl_all_files); do
+          case "$$f" in
+            */include/*)
+              d="$${f%%/include/*}/include"
+              d="$${d#../}"; d="$${d#external/}"
+              echo "$$d"
+              case "$$d" in */cccl/include) echo "$$d/cccl" ;; esac
+              ;;
+          esac
+        done | sort -u > $@
+    """,
+)
+
+cc_library(
+    name = "nvrtc_includes",
+    srcs = ["nvrtc_includes.cc"],
+    hdrs = ["nvrtc_includes.hpp"],
+    data = [
+        ":nvrtc_include_dirs",
+        "@cuda//:cccl_all_files",
+        "@cuda//:crt_all_files",
+        "@cuda//:cudart_all_files",
+    ],
+    deps = [
+        "@holoscan_sdk//:holoscan",
+        "@rules_cc//cc/runfiles",
+    ],
+)
+
+# Control-plane setup plus the per-camera Holoscan chain; used by the apps.
+cc_library(
+    name = "camera_rig",
+    srcs = ["camera_rig.cc"],
+    hdrs = ["camera_rig.hpp"],
+    deps = [
+        ":nvrtc_includes",
+        ":rig_config",
+        "//hsb/board/da322",
+        "//hsb/ops:frame_check_op",
+        "//hsb/ops:frame_stats_op",
+        "//hsb/sensors/imx676",
+        "@cuda",
+        "@fmt",
+        "@hololink//:common",
+        "@hololink//:core",
+        "@hololink//:csi_to_bayer",
+        "@hololink//:image_processor",
+        "@hololink//:linux_receiver_op",
+        "@hololink//:roce_receiver",
+        "@holoscan_sdk//:holoscan",
+        "@holoscan_sdk//:op_bayer_demosaic",
+    ],
+)
+
+cc_test(
+    name = "rig_config_test",
+    size = "small",
+    srcs = ["rig_config_test.cc"],
+    data = ["//configs:all_configs"],
+    deps = [
+        ":rig_config",
+        "@googletest//:gtest_main",
+    ],
+)

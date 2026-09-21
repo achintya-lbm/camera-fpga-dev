@@ -1,0 +1,15 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_binary(
+    name = "hsbctl",
+    srcs = ["main.cc"],
+    deps = [
+        "//hsb/board/da322",
+        "//hsb/sensors/imx676",
+        "@cli11",
+        "@fmt",
+        "@hololink//:core",
+    ],
+)

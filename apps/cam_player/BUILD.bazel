@@ -1,0 +1,17 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# Live viewer; needs a Mellanox NIC for --receiver roce and a Vulkan-capable GPU (docs/machines.md).
+cc_binary(
+    name = "cam_player",
+    srcs = ["main.cc"],
+    deps = [
+        "//hsb/pipeline:camera_rig",
+        "//hsb/pipeline:rig_config",
+        "@cli11",
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+        "@holoscan_sdk//:op_holoviz",
+    ],
+)

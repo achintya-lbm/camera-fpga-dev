@@ -22,8 +22,9 @@ URL templates. Everything is built from source except NVIDIA GXF (ADR-0005).
 | `imgui` | commit f3373780 (1.88 WIP, docking) + Holoscan `imconfig.h` patch | Holoviz UI | hand-written BUILD |
 | `glslang` | 15.4.0 | GLSL → SPIR-V compiler used at build time for the Holoviz shaders | rules_foreign_cc `cmake` (tool) |
 | `nv_codec_headers` | n13.0.19.1 | NVENC API 13.0 headers (driver library dlopen()ed at runtime) | header-only |
-| `hololink` (M2) | holoscan-sensor-bridge 2.5.0-PB6 + Tauro DA322 patch | HSB host library | patch imported; BUILD in M2 |
-| `rules_cuda/patches` | rules_cuda 0.3.0 | two small fixes to device linking with the hermetic toolkit (applied via `single_version_override`) | — |
+| `hololink` | holoscan-sensor-bridge 2.5.0-PB6 (`6930609`) + Tauro DA322 patch + fmt 11 fix | HSB host library: control plane, receivers, CSI/ISP operators, emulator | hand-written BUILD (`hololink/README.md`) |
+| `rdma_core` | rdma-core v50.0 | `<infiniband/verbs.h>` for the RoCE receiver; links the host's `libibverbs.so.1` (ABI-stable) | headers only |
+| `rules_cuda/patches` | rules_cuda 0.3.0 | device-link fixes with the hermetic toolkit; `@cuda//:nvrtc_builtins` target (applied via `single_version_override`) | — |
 
 From the Bazel Central Registry (`MODULE.bazel`): rules_cuda (hermetic CUDA 13.0.2 via `cuda.redist_json`),
 rules_foreign_cc, fmt, spdlog, yaml-cpp, cli11, tl-expected, concurrentqueue, nlohmann_json,
@@ -33,5 +34,8 @@ Rules of the road:
 - Pin versions with sha256; bump `_VERSION`/`_SHA256` together.
 - Patches are build-system-only and documented in the directory's `patches/README.md`.
 - Every shared library needed at runtime must be a direct link dependency of the executable (see
-  `holoscan/package.BUILD.bazel`), because GXF and Holoscan `dlopen` extensions by bare name.
+  `holoscan/package.BUILD.bazel`), because GXF and Holoscan `dlopen` extensions by bare name; the
+  same holds for `libnvrtc-builtins` (`@cuda//:nvrtc_builtins`).
+- Prefer `patch_tool = "patch"` (GNU patch) in repository rules: Bazel's built-in patcher chokes on
+  multi-file patches and on "\ No newline at end of file" markers.
 - No machine-specific paths here; host requirements live in `docs/machines.md`.

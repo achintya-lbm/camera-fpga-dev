@@ -1,0 +1,220 @@
+# -*- mode: bazel -*-
+# hololink 2.5.0-PB6 (+ Tauro DA322 patch) built from source. Mirrors the CMake targets
+# under src/hololink/{core,common,sensors,operators,emulation}; Python bindings, tests,
+# examples and the tools directory are not built. Include root is `src`
+# (`#include <hololink/core/hololink.hpp>`).
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+COPTS = [
+    "-Wno-unused-parameter",
+    "-Wno-deprecated-declarations",
+]
+
+# hololink::core — control plane (ECB/BOOTP), DataChannel, I2C/SPI/GPIO, metadata.
+cc_library(
+    name = "core",
+    srcs = glob([
+        "src/hololink/core/*.cpp",
+        "src/hololink/core/mpsb/**/*.cpp",
+        "src/hololink/core/mpsb/**/*.c",
+    ]),
+    hdrs = glob([
+        "src/hololink/core/*.hpp",
+        "src/hololink/core/mpsb/**/*.h",
+    ]),
+    copts = COPTS,
+    defines = ["FMT_HEADER_ONLY=1"],
+    includes = ["src"],
+    linkopts = ["-lpthread"],
+    deps = ["@fmt"],
+)
+
+# hololink::sensor (Leopard I2C expander helper) and the camera sensor base classes.
+cc_library(
+    name = "sensor",
+    srcs = ["src/hololink/sensors/li_i2c_expander.cpp"],
+    hdrs = [
+        "src/hololink/sensors/li_i2c_expander.hpp",
+        "src/hololink/sensors/sensor.hpp",
+    ],
+    copts = COPTS,
+    deps = [":core"],
+)
+
+cc_library(
+    name = "camera_sensor",
+    srcs = [
+        "src/hololink/sensors/camera/camera_mode.cpp",
+        "src/hololink/sensors/camera/camera_sensor.cpp",
+    ],
+    hdrs = [
+        "src/hololink/sensors/camera/camera_mode.hpp",
+        "src/hololink/sensors/camera/camera_sensor.hpp",
+    ],
+    copts = COPTS,
+    deps = [":sensor"],
+)
+
+# Upstream reference driver (kept as the template our IMX676 driver follows).
+cc_library(
+    name = "native_imx274_camera_sensor",
+    srcs = [
+        "src/hololink/sensors/camera/imx274/imx274_mode.cpp",
+        "src/hololink/sensors/camera/imx274/native_imx274_sensor.cpp",
+    ],
+    hdrs = glob(["src/hololink/sensors/camera/imx274/*.hpp"]),
+    copts = COPTS,
+    deps = [":camera_sensor"],
+)
+
+# hololink::common — NVRTC kernel launcher, CLI arg helper, ibverbs device listing,
+# Holoviz/ImGui renderer helper.
+cc_library(
+    name = "common",
+    srcs = glob(["src/hololink/common/*.cpp"]),
+    hdrs = glob(["src/hololink/common/*.hpp"]),
+    copts = COPTS,
+    deps = [
+        ":core",
+        "@cuda",
+        "@cuda//:cuda_runtime",
+        "@cuda//:nvrtc",
+        "@cuda//:nvrtc_builtins",  # dlopen()ed by libnvrtc when CsiToBayerOp JIT-compiles
+        "@holoscan_sdk//:holoscan",
+        "@holoscan_sdk//:viz",
+        "@imgui",
+        "@nvtx3",
+        "@rdma_core//:ibverbs",
+    ],
+)
+
+cc_library(
+    name = "base_receiver_op",
+    srcs = ["src/hololink/operators/base_receiver_op.cpp"],
+    hdrs = ["src/hololink/operators/base_receiver_op.hpp"],
+    copts = COPTS,
+    deps = [
+        ":common",
+        ":sensor",
+        "@cuda",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+cc_library(
+    name = "linux_receiver",
+    srcs = ["src/hololink/operators/linux_receiver/linux_receiver.cpp"],
+    hdrs = ["src/hololink/operators/linux_receiver/linux_receiver.hpp"],
+    copts = COPTS,
+    deps = [
+        ":base_receiver_op",
+        ":core",
+        "@cuda",
+        "@rdma_core//:ibverbs_headers",  # <infiniband/opcode.h>
+    ],
+)
+
+cc_library(
+    name = "linux_receiver_op",
+    srcs = ["src/hololink/operators/linux_receiver/linux_receiver_op.cpp"],
+    hdrs = ["src/hololink/operators/linux_receiver/linux_receiver_op.hpp"],
+    copts = COPTS,
+    deps = [
+        ":base_receiver_op",
+        ":core",
+        ":linux_receiver",
+        "@cuda",
+    ],
+)
+
+# RoCE v2 receiver (ConnectX). Links the host's libibverbs.so.1.
+cc_library(
+    name = "roce_receiver",
+    srcs = [
+        "src/hololink/operators/roce_receiver/roce_receiver.cpp",
+        "src/hololink/operators/roce_receiver/roce_receiver_op.cpp",
+    ],
+    hdrs = glob(["src/hololink/operators/roce_receiver/*.hpp"]),
+    copts = COPTS,
+    deps = [
+        ":base_receiver_op",
+        ":core",
+        "@cuda",
+        "@rdma_core//:ibverbs",
+    ],
+)
+
+cc_library(
+    name = "csi_to_bayer",
+    srcs = ["src/hololink/operators/csi_to_bayer/csi_to_bayer.cpp"],
+    hdrs = ["src/hololink/operators/csi_to_bayer/csi_to_bayer.hpp"],
+    copts = COPTS,
+    deps = [
+        ":common",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+cc_library(
+    name = "image_processor",
+    srcs = ["src/hololink/operators/image_processor/image_processor.cpp"],
+    hdrs = ["src/hololink/operators/image_processor/image_processor.hpp"],
+    copts = COPTS,
+    deps = [
+        ":core",
+        ":csi_to_bayer",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+cc_library(
+    name = "packed_format_converter",
+    srcs = ["src/hololink/operators/packed_format_converter/packed_format_converter.cpp"],
+    hdrs = ["src/hololink/operators/packed_format_converter/packed_format_converter.hpp"],
+    copts = COPTS,
+    deps = [
+        ":common",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# HSB emulator: a software Hololink device (BOOTP/ECB control plane, I2C peripherals,
+# UDP data plane in the real wire format). Used for no-FPGA tests (apps/emu_source).
+# ---------------------------------------------------------------------------
+cc_library(
+    name = "emulation",
+    srcs = [
+        "src/hololink/emulation/base_transmitter.cpp",
+        "src/hololink/emulation/data_plane.cpp",
+        "src/hololink/emulation/hsb_config.cpp",
+        "src/hololink/emulation/hsb_emulator.cpp",
+        "src/hololink/emulation/mem_register.cpp",
+        "src/hololink/emulation/net.cpp",
+        "src/hololink/emulation/utils.cpp",
+    ],
+    hdrs = glob(["src/hololink/emulation/*.hpp"]),
+    copts = COPTS,
+    includes = ["src/hololink/emulation"],
+    deps = [
+        ":core",
+        "@dlpack",
+    ],
+)
+
+# Linux (plain UDP / RoCE-format) data plane of the emulator.
+cc_library(
+    name = "emulation_linux",
+    srcs = [
+        "src/hololink/emulation/linux_data_plane.cpp",
+        "src/hololink/emulation/linux_transmitter.cpp",
+    ],
+    copts = COPTS,
+    deps = [
+        ":emulation",
+        "@cuda//:cuda_runtime",
+        "@zlib",
+    ],
+)

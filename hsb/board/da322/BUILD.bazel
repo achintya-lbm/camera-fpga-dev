@@ -1,0 +1,24 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The only place that knows DA322 registers, pins-by-port and board identity.
+cc_library(
+    name = "da322",
+    srcs = ["da322_board.cc"],
+    hdrs = [
+        "da322_board.hpp",
+        "da322_regs.hpp",
+    ],
+    deps = ["@hololink//:core"],
+)
+
+cc_test(
+    name = "da322_regs_test",
+    size = "small",
+    srcs = ["da322_regs_test.cc"],
+    deps = [
+        ":da322",
+        "@googletest//:gtest_main",
+    ],
+)

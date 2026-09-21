@@ -28,7 +28,7 @@ bazel run //apps/hello_holoscan
 
 ## Layout
 
-See `DESIGN.md` §10. Short version: `hsb/` host libraries (board, sensors, encode, ops, CLI), `apps/`
-Holoscan applications, `fpga/` FPGA sources and bitstreams, `tools/workspace/` one directory per external
+See `DESIGN.md` §10. Short version: `hsb/` host libraries (board, sensors, pipeline, encode, ops, CLI),
+`apps/` Holoscan applications, `configs/` rig YAMLs, `fpga/` FPGA sources and bitstreams, `tools/workspace/` one directory per external
 dependency (`repository.bzl` + `package.BUILD.bazel`, same convention as orochi), `tools/py/` Python
 tooling, `docs/` runbooks and hardware reference.

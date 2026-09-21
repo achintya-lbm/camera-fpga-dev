@@ -568,7 +568,8 @@
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.1/MODULE.bazel": "6a9fe6e3fc865715a7be9823ce694ceb01e364c35f7a846bf0d2b34762bc066b",
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.3/MODULE.bazel": "af322bc08976524477c79d1e45e241b6efbeb918c497e8840b8ab116802dda79",
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.5/MODULE.bazel": "eec517b5bbe5492629466e11dae908d043364302283de25581e3eb944326c4ca",
-    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.5/source.json": "22bc55c47af97246cfc093d0acf683a7869377de362b5d1c552c2c2e16b7a806",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.8/MODULE.bazel": "772c674bb78a0342b8caf32ab5c25085c493ca4ff08398208dcbe4375fe9f776",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.8/source.json": "cf377d76800dfc3d3b71e9dd4a8c53a62837cbce37cc4f25e6207b15fc1e8f2b",
     "https://bcr.bazel.build/modules/zlib/1.3.1/MODULE.bazel": "751c9940dcfe869f5f7274e1295422a34623555916eb98c174c1e945594bf198",
     "https://bcr.bazel.build/modules/zlib/1.3/MODULE.bazel": "6a9c02f19a24dcedb05572b2381446e27c272cd383aed11d41d99da9e3167a72"
   },
@@ -576,7 +577,7 @@
   "moduleExtensions": {
     "//tools/workspace:default.bzl%camera_fpga_dev_repositories": {
       "general": {
-        "bzlTransitiveDigest": "xcTQe7jY3yvGuIS4/fs86NNihyp+M6S4+CaKS/s4XAE=",
+        "bzlTransitiveDigest": "z1B+tOHYq6XbvlNWbzUa/6Q4H2iM2xcrPaXN10HJpdM=",
         "usagesDigest": "+xLuTlbOpdT/T3i58oTtBwPUU6aSra9dTZWBBXQqPac=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
@@ -618,6 +619,26 @@
           "gxf": {
             "repoRuleId": "@@//tools/workspace/gxf:repository.bzl%gxf_repository",
             "attributes": {}
+          },
+          "hololink": {
+            "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
+            "attributes": {
+              "urls": [
+                "https://github.com/nvidia-holoscan/holoscan-sensor-bridge/archive/6930609c4ce264ec7e2936dd1f5813323fccb08e.tar.gz"
+              ],
+              "sha256": "9e5f789975d8db0cb2aca01bdb8aa93266570146f42f7a5236b05260639a81b8",
+              "strip_prefix": "holoscan-sensor-bridge-6930609c4ce264ec7e2936dd1f5813323fccb08e",
+              "build_file": "@@//tools/workspace/hololink:package.BUILD.bazel",
+              "patches": [
+                "@@//tools/workspace/hololink/patches:0001-taurotech-da322-v1.2.1-pb.patch",
+                "@@//tools/workspace/hololink/patches:0002-fmt11-compat.patch",
+                "@@//tools/workspace/hololink/patches:0003-nvrtc-include-paths-env.patch"
+              ],
+              "patch_tool": "patch",
+              "patch_args": [
+                "-p1"
+              ]
+            }
           },
           "holoscan_sdk": {
             "repoRuleId": "@@//tools/workspace/holoscan:repository.bzl%holoscan_repository",
@@ -683,6 +704,17 @@
               "sha256": "94dc962157b290ec1e89f8220480e6fd5b6471a895f1d65860e81bdb87fe2e91",
               "strip_prefix": "rapids-logger-0.2.0",
               "build_file": "@@//tools/workspace/rapids_logger:package.BUILD.bazel"
+            }
+          },
+          "rdma_core": {
+            "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
+            "attributes": {
+              "urls": [
+                "https://github.com/linux-rdma/rdma-core/archive/refs/tags/v50.0.tar.gz"
+              ],
+              "sha256": "ecb866caaec7ce13f40074c769860f9c36c3a37a70913c5218217e3293d7cb11",
+              "strip_prefix": "rdma-core-50.0",
+              "build_file": "@@//tools/workspace/rdma_core:package.BUILD.bazel"
             }
           },
           "rmm": {
@@ -765,7 +797,7 @@
     },
     "@@rules_cuda+//cuda:extensions.bzl%toolchain": {
       "general": {
-        "bzlTransitiveDigest": "m0J6Ess6WofYGeMiNqaoD7KeYQXIRJxCRXI6dJ8Eojc=",
+        "bzlTransitiveDigest": "OrzG7oAllsZW//rR9GrcX73Cb6Z5NV6JT5NzETqyWUk=",
         "usagesDigest": "bJGk9suamer3HSDUI61q49d+JcM8ReHSqWVvAm/vSR4=",
         "recordedInputs": [
           "REPO_MAPPING:bazel_tools,rules_cc rules_cc+",

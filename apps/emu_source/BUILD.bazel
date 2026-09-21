@@ -1,0 +1,45 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "emulated_peripherals",
+    srcs = [
+        "frame_generator.cc",
+        "imx676_emulator.cc",
+    ],
+    hdrs = [
+        "frame_generator.hpp",
+        "imx676_emulator.hpp",
+    ],
+    deps = [
+        "//hsb/sensors/imx676:imx676_mode",
+        "@hololink//:emulation",
+    ],
+)
+
+cc_test(
+    name = "frame_generator_test",
+    size = "small",
+    srcs = ["frame_generator_test.cc"],
+    deps = [
+        ":emulated_peripherals",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Needs the network: binds the HSB control port and broadcasts BOOTP.
+cc_binary(
+    name = "emu_source",
+    srcs = ["main.cc"],
+    deps = [
+        ":emulated_peripherals",
+        "//hsb/board/da322",
+        "@cli11",
+        "@dlpack",
+        "@fmt",
+        "@hololink//:core",
+        "@hololink//:emulation",
+        "@hololink//:emulation_linux",
+    ],
+)

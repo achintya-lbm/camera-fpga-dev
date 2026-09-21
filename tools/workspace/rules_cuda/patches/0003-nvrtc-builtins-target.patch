@@ -1,0 +1,38 @@
+Expose libnvrtc-builtins as @cuda//:nvrtc_builtins so programs that JIT with NVRTC can link
+the library the NVRTC runtime dlopen()s by bare name (hermetic toolkit, no LD_LIBRARY_PATH).
+
+diff --git a/cuda/private/templates/BUILD.nvrtc b/cuda/private/templates/BUILD.nvrtc
+index e80d3bb..320ddbb 100644
+--- a/cuda/private/templates/BUILD.nvrtc
++++ b/cuda/private/templates/BUILD.nvrtc
+@@ -23,3 +23,17 @@ cc_library(
+         ":nvrtc_lib",
+     ]),
+ )
++
++# libnvrtc dlopen()s libnvrtc-builtins.so.<major.minor> by bare name at runtime. Linking it into
++# the executable makes the loader find the already-loaded library without LD_LIBRARY_PATH.
++cc_import_versioned_sos(
++    name = "nvrtc_builtins_so",
++    shared_library = "%{component_name}/%{libpath}/libnvrtc-builtins.so",
++)
++
++cc_library(
++    name = "nvrtc_builtins",
++    deps = if_linux([
++        ":nvrtc_builtins_so",
++    ]),
++)
+diff --git a/cuda/private/templates/registry.bzl b/cuda/private/templates/registry.bzl
+index f31ef82..4fbf891 100644
+--- a/cuda/private/templates/registry.bzl
++++ b/cuda/private/templates/registry.bzl
+@@ -19,7 +19,7 @@ REGISTRY = {
+     "nvjpeg": ["nvjpeg_all_files", "nvjpeg_license", "nvjpeg_headers", "nvjpeg", "nvjpeg_static"],
+     "nvml": ["nvml_all_files", "nvml_license", "nvml_headers", "nvml"],
+     "nvprof": [],
+-    "nvrtc": ["nvrtc_all_files", "nvrtc_license", "nvrtc_headers", "nvrtc"],
++    "nvrtc": ["nvrtc_all_files", "nvrtc_license", "nvrtc_headers", "nvrtc", "nvrtc_builtins"],
+     "nvtx": ["nvtx_all_files", "nvtx_license", "nvtx_headers", "nvtx", "nvtx3"],
+ }
+ 

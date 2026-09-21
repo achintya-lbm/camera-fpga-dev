@@ -1,0 +1,16 @@
+# Four IMX676 at full resolution, 4 x 3552x3556 RAW10 x 18 fps = 9.09 Gbps payload (matrix row C3).
+hololink_ip: 192.168.0.2
+receiver: roce
+ibv_name: ""
+ibv_port: 1
+cuda_device: 0
+lane_rate_limit_mbps: 1500
+report_interval_s: 2.0
+p22:
+  enabled: true
+  expander_address: 0x20
+cameras:
+  - {port: J1A, mode: FULL_RAW10, fps: 18, lanes: 4, exposure_ms: 10, gain_db: 6}
+  - {port: J1B, mode: FULL_RAW10, fps: 18, lanes: 4, exposure_ms: 10, gain_db: 6}
+  - {port: J1C, mode: FULL_RAW10, fps: 18, lanes: 4, exposure_ms: 10, gain_db: 6}
+  - {port: J1D, mode: FULL_RAW10, fps: 18, lanes: 4, exposure_ms: 10, gain_db: 6}

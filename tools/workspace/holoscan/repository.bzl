@@ -37,10 +37,13 @@ holoscan_repository = repository_rule(
         "patches": attr.label_list(
             default = [
                 "//tools/workspace/holoscan/patches:0001-generated-proto-include-paths.patch",
+                "//tools/workspace/holoscan/patches:0002-holoviz-vulkan-hpp-detail-namespace.patch",
             ],
         ),
         "patch_args": attr.string_list(default = ["-p1"]),
-        "patch_tool": attr.string(default = ""),
+        # GNU patch: Bazel's built-in patcher mis-attributes hunks in multi-file patches
+        # such as 0002 and rejects "\ No newline at end of file" markers mid-hunk.
+        "patch_tool": attr.string(default = "patch"),
         "patch_cmds": attr.string_list(default = []),
     },
 )
