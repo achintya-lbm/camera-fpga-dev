@@ -99,7 +99,9 @@ void FrameCheckOp::compute(holoscan::InputContext& op_input, holoscan::OutputCon
       host_buffer_size_ = n;
     }
     CudaCheck(cudaMemcpy(host_buffer_, tensor->data(), n, cudaMemcpyDefault), "cudaMemcpy D2H");
-    const std::string base = fmt::format("{}/{}_{:06d}", dump_dir_.get(), camera_.get(), frame_number);
+    // Name by our own count: some FPGA builds leave frame_number at 0 in the metadata block.
+    const std::string base = fmt::format("{}/{}_{:03d}_f{:06d}", dump_dir_.get(), camera_.get(), dumped_,
+                                         frame_number < 0 ? 0 : frame_number);
     std::ofstream raw(base + ".raw", std::ios::binary);
     raw.write(reinterpret_cast<const char*>(host_buffer_), static_cast<std::streamsize>(n));
     std::ofstream side(base + ".json");
