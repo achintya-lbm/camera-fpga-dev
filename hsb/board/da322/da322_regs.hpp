@@ -38,6 +38,12 @@ inline constexpr uint8_t kDataTypeRaw10 = 0x2B;
 inline constexpr uint8_t kDataTypeRaw12 = 0x2C;
 inline constexpr uint8_t kDataTypeEmbedded = 0x12;
 
+// Camera enable lines: connector pin 17 (CAM_EN) of camera k is HSB GPIO pin k (vendor examples/gpio.py,
+// GPIO_CAMn_PWR_EN_L; the vendor drives it HIGH to enable). On the FPA-A/P22 adapter this pin is
+// IS_RST_IN, so a low level keeps the sensor in reset even with the adapter's own reset released.
+inline constexpr uint32_t GpioPinForCamera(unsigned camera) { return camera; }
+inline constexpr uint32_t kGpioCameraEnableLevel = 1;  // value written to enable (vendor convention)
+
 // Camera I2C: each connector has its own bus; the FPGA numbers them CAM_I2C_BUS + k
 // (same convention as the vendor's imx477/imx219 drivers: i2c_bus = CAM_I2C_BUS + camera_id).
 inline constexpr uint32_t I2cBusForCamera(unsigned camera) {

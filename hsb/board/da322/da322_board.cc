@@ -1,6 +1,8 @@
 #include "hsb/board/da322/da322_board.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <array>
 #include <cctype>
 #include <stdexcept>
@@ -47,8 +49,37 @@ bool IsDa322(const hololink::Metadata& metadata) {
   return false;
 }
 
-Da322Board::Da322Board(std::shared_ptr<hololink::Hololink> hololink) : hololink_(std::move(hololink)) {
+Da322Board::Da322Board(std::shared_ptr<hololink::Hololink> hololink, hololink::Metadata metadata)
+    : hololink_(std::move(hololink)), metadata_(std::move(metadata)) {
   if (!hololink_) throw std::invalid_argument("Da322Board: null Hololink");
+}
+
+std::shared_ptr<hololink::Hololink::GPIO> Da322Board::gpio() {
+  if (!gpio_) {
+    if (metadata_.empty()) throw std::runtime_error("Da322Board: enumeration metadata required for GPIO access");
+    gpio_ = hololink_->get_gpio(metadata_);
+  }
+  return gpio_;
+}
+
+void Da322Board::SetCameraEnable(unsigned camera, bool enable) {
+  CheckCamera(camera);
+  auto pins = gpio();
+  const uint32_t pin = GpioPinForCamera(camera);
+  pins->set_direction(pin, hololink::Hololink::GPIO::OUT);
+  pins->set_value(pin, enable ? kGpioCameraEnableLevel : (kGpioCameraEnableLevel ^ 1u));
+}
+
+bool Da322Board::CameraEnabled(unsigned camera) {
+  CheckCamera(camera);
+  return gpio()->get_value(GpioPinForCamera(camera)) == kGpioCameraEnableLevel;
+}
+
+void Da322Board::PowerCycleCamera(unsigned camera, unsigned off_ms, unsigned on_ms) {
+  SetCameraEnable(camera, false);
+  std::this_thread::sleep_for(std::chrono::milliseconds(off_ms));
+  SetCameraEnable(camera, true);
+  std::this_thread::sleep_for(std::chrono::milliseconds(on_ms));
 }
 
 void Da322Board::ConfigurePort(unsigned camera, unsigned lanes, hololink::csi::PixelFormat format) {

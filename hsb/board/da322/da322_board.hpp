@@ -31,7 +31,16 @@ bool IsDa322(const hololink::Metadata& metadata);
 
 class Da322Board {
  public:
-  explicit Da322Board(std::shared_ptr<hololink::Hololink> hololink);
+  // `metadata` (enumeration record) is needed for the GPIO block; without it the camera enable
+  // functions throw.
+  explicit Da322Board(std::shared_ptr<hololink::Hololink> hololink, hololink::Metadata metadata = {});
+
+  // Drives the connector's CAM_EN (pin 17) through the HSB GPIO block; the P22 adapter uses it as the
+  // sensor reset input, so cameras stay dark until this is enabled.
+  void SetCameraEnable(unsigned camera, bool enable);
+  bool CameraEnabled(unsigned camera);
+  // Vendor bring-up sequence: disable, wait, enable, wait.
+  void PowerCycleCamera(unsigned camera, unsigned off_ms = 1000, unsigned on_ms = 1000);
 
   // Lane count (1..4) and reference data type for one camera port; call after
   // Hololink::reset() and before the sensor starts streaming.
@@ -49,7 +58,11 @@ class Da322Board {
   uint32_t fpga_date();
 
  private:
+  std::shared_ptr<hololink::Hololink::GPIO> gpio();
+
   std::shared_ptr<hololink::Hololink> hololink_;
+  hololink::Metadata metadata_;
+  std::shared_ptr<hololink::Hololink::GPIO> gpio_;
 };
 
 }  // namespace hsb::da322

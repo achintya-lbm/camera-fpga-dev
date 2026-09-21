@@ -91,7 +91,7 @@ std::unique_ptr<hsb::da322::Da322Board> RequireDa322(Board& board, bool force) {
   if (!force && !hsb::da322::IsDa322(board.metadata)) {
     throw std::runtime_error("this board does not identify as a Tauro DA322 (use --force to override)");
   }
-  return std::make_unique<hsb::da322::Da322Board>(board.hololink);
+  return std::make_unique<hsb::da322::Da322Board>(board.hololink, board.metadata);
 }
 
 }  // namespace
@@ -239,7 +239,8 @@ int main(int argc, char** argv) {
       std::vector<unsigned> found;
       for (unsigned addr = 0x08; addr <= 0x77; ++addr) {
         try {
-          bus->i2c_transaction(addr, {}, 1, std::make_shared<hololink::Timeout>(0.2f));
+          // One register-pointer byte then a read: ACKed by expanders, EEPROMs and sensors alike.
+          bus->i2c_transaction(addr, {0x00}, 1, std::make_shared<hololink::Timeout>(0.2f));
           found.push_back(addr);
         } catch (const std::exception&) {
         }
@@ -322,6 +323,11 @@ int main(int argc, char** argv) {
         imx.write_register(reg, static_cast<uint8_t>(ParseU32(sensor_args[1])));
         std::cout << fmt::format("{:#06x} <- {:#04x}; readback {:#04x}\n", reg, ParseU32(sensor_args[1]), imx.read_register(reg));
       } else if (sensor_action == "power-up") {
+        if (hsb::da322::IsDa322(board->metadata)) {
+          hsb::da322::Da322Board da322(board->hololink, board->metadata);
+          da322.PowerCycleCamera(camera);
+          std::cout << fmt::format("DA322 CAM_EN (GPIO {}) cycled and enabled\n", hsb::da322::GpioPinForCamera(camera));
+        }
         imx.power_up();
         std::cout << "P22 power-up sequence done\n";
       } else if (sensor_action == "power-down") {
@@ -330,9 +336,14 @@ int main(int argc, char** argv) {
       } else if (sensor_action == "configure") {
         auto mode = hsb::imx676::ParseMode(sensor_mode);
         if (!mode) throw std::runtime_error("unknown mode " + sensor_mode);
-        auto da322 = hsb::da322::IsDa322(board->metadata) ? std::make_unique<hsb::da322::Da322Board>(board->hololink) : nullptr;
+        auto da322 = hsb::da322::IsDa322(board->metadata)
+                         ? std::make_unique<hsb::da322::Da322Board>(board->hololink, board->metadata)
+                         : nullptr;
         imx.set_mode(*mode);
-        if (da322) da322->ConfigurePort(camera, 4, imx.get_pixel_format());
+        if (da322) {
+          da322->ConfigurePort(camera, 4, imx.get_pixel_format());
+          da322->PowerCycleCamera(camera);
+        }
         imx.configure(*mode);
         std::cout << hsb::imx676::Describe(imx.mode_info(), imx.timing()) << "\n";
       } else {

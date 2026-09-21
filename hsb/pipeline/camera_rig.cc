@@ -73,7 +73,9 @@ void CameraRig::Connect(double enumeration_timeout_s) {
   hololink_ = channels_.front()->hololink();
   hololink_->start();
   control_started_ = true;
-  if (hsb::da322::IsDa322(channel_metadata_)) board_ = std::make_unique<hsb::da322::Da322Board>(hololink_);
+  if (hsb::da322::IsDa322(channel_metadata_)) {
+    board_ = std::make_unique<hsb::da322::Da322Board>(hololink_, channel_metadata_);
+  }
 
   for (size_t k = 0; k < config_.cameras.size(); ++k) {
     const CameraConfig& cam = config_.cameras[k];
@@ -120,8 +122,9 @@ void CameraRig::ConfigureSensors() {
     sensor.set_mode(cam.mode);  // plans lane rate / timing so the board can be programmed first
     if (board_) {
       board_->ConfigurePort(cam.port, cam.lanes, sensor.get_pixel_format());
-      HOLOSCAN_LOG_INFO("{}: DA322 port lanes={} data_type={:#04x}", cam.label(), cam.lanes,
-                        board_->ConfiguredDataType(cam.port));
+      HOLOSCAN_LOG_INFO("{}: DA322 port lanes={} data_type={:#04x}; power-cycling CAM_EN (GPIO {})", cam.label(),
+                        cam.lanes, board_->ConfiguredDataType(cam.port), hsb::da322::GpioPinForCamera(cam.port));
+      board_->PowerCycleCamera(cam.port);
     }
     sensor.configure(cam.mode);
     HOLOSCAN_LOG_INFO("{}: {}", cam.label(), hsb::imx676::Describe(sensor.mode_info(), sensor.timing()));
