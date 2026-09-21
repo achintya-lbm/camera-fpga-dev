@@ -30,11 +30,17 @@ class JpegEncoder {
 
   cudaStream_t stream() const { return stream_; }
 
+  // Orders all later work on this encoder's stream after the work already queued on `producer`
+  // (the stream that wrote the image about to be encoded). Without it nvJPEG/NPP can read the
+  // buffer before the producer's kernel has finished, which showed up as all-black preview frames.
+  void WaitFor(cudaStream_t producer);
+
  private:
   void SetQuality(int quality);
 
   cudaStream_t stream_ = nullptr;
   bool own_stream_ = false;
+  cudaEvent_t sync_event_ = nullptr;  // created on first WaitFor()
   nvjpegHandle_t handle_ = nullptr;
   nvjpegEncoderState_t state_ = nullptr;
   nvjpegEncoderParams_t params_ = nullptr;

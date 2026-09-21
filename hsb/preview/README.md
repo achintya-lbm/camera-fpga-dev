@@ -8,7 +8,7 @@ rest of the tree already uses (Holoscan, CUDA nvJPEG/NPP, fmt).
 | --- | --- |
 | `preview_sink.hpp/.cc` | Thread-safe hand-off between the pipeline and the HTTP threads: one "latest" stream JPEG (sequence numbered, condition-variable wake-up) plus on-demand full-resolution stills. |
 | `controls.hpp` | `Controls` interface the application implements (exposure, gain, black level, test pattern, raw capture, status JSON). |
-| `jpeg_encoder.hpp/.cc` | `JpegEncoder`: nvJPEG 4:2:0 encode of an interleaved RGB8 device image, optional NPP bilinear downscale, own CUDA stream, reused scratch buffer. Also used by the GPU unit test. |
+| `jpeg_encoder.hpp/.cc` | `JpegEncoder`: nvJPEG 4:2:0 encode of an interleaved RGB8 device image, optional NPP bilinear downscale, own CUDA stream ordered after the producer's stream with `WaitFor()`, reused scratch buffer. Also used by the GPU unit test. |
 | `jpeg_encoder_op.hpp/.cc` | `JpegEncoderOp`: Holoscan operator taking a `uint8 [H,W,3]` device tensor (FormatConverterOp `rgb888` output), publishing stream frames at `stream_fps_limit` (extra frames are skipped, never queued) and full-resolution stills when the sink has a pending request. |
 | `snapshot_op.hpp/.cc` | `SnapshotOp`: pass-through placed right behind the receiver; `Request()` makes the next compute copy the raw CSI frame to pinned host memory and write `<dump_dir>/<camera>_<YYYYmmdd-HHMMSS-mmm>.raw` + `.json` (sidecar fields as `FrameCheckOp`, readable by `//tools/py:raw_frame`). |
 | `preview_server.hpp/.cc` | `PreviewServer`: POSIX HTTP/1.1 server, one thread per connection. |

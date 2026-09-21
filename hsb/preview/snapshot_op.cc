@@ -91,7 +91,11 @@ void SnapshotOp::compute(holoscan::InputContext& op_input, holoscan::OutputConte
         CudaCheck(cudaMallocHost(reinterpret_cast<void**>(&host_buffer_), copy_bytes), "cudaMallocHost");
         host_buffer_size_ = copy_bytes;
       }
-      CudaCheck(cudaMemcpy(host_buffer_, tensor->data(), copy_bytes, cudaMemcpyDefault), "cudaMemcpy D2H");
+      // Copy on a stream ordered after the receiver's device writes (Holoscan syncs the streams
+      // found on the message to the one it returns) rather than on the legacy default stream.
+      const cudaStream_t stream = op_input.receive_cuda_stream("input");
+      CudaCheck(cudaMemcpyAsync(host_buffer_, tensor->data(), copy_bytes, cudaMemcpyDefault, stream), "cudaMemcpyAsync D2H");
+      CudaCheck(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
       const std::string base = pending_base_;
       {
         std::ofstream raw(base + ".raw", std::ios::binary);

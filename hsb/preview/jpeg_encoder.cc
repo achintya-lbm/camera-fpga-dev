@@ -59,11 +59,19 @@ JpegEncoder::JpegEncoder(cudaStream_t stream) : stream_(stream) {
 }
 
 JpegEncoder::~JpegEncoder() {
+  if (sync_event_) cudaEventDestroy(sync_event_);
   if (scaled_) cudaFree(scaled_);
   if (params_) nvjpegEncoderParamsDestroy(params_);
   if (state_) nvjpegEncoderStateDestroy(state_);
   if (handle_) nvjpegDestroy(handle_);
   if (own_stream_ && stream_) cudaStreamDestroy(stream_);
+}
+
+void JpegEncoder::WaitFor(cudaStream_t producer) {
+  if (producer == stream_) return;
+  if (!sync_event_) CudaCheck(cudaEventCreateWithFlags(&sync_event_, cudaEventDisableTiming), "cudaEventCreateWithFlags");
+  CudaCheck(cudaEventRecord(sync_event_, producer), "cudaEventRecord");
+  CudaCheck(cudaStreamWaitEvent(stream_, sync_event_, 0), "cudaStreamWaitEvent");
 }
 
 void JpegEncoder::SetQuality(int quality) {

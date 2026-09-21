@@ -74,6 +74,9 @@ void JpegEncoderOp::compute(holoscan::InputContext& op_input, holoscan::OutputCo
   const int width = static_cast<int>(shape[1]);
   const int pitch = width * 3;
   const auto* rgb = static_cast<const uint8_t*>(tensor->data());
+  // FormatConverterOp converts on its own CUDA stream and attaches that stream to the message.
+  // receive_cuda_stream() makes this operator's stream wait for it; the encoder then waits for ours.
+  impl_->encoder->WaitFor(op_input.receive_cuda_stream("input"));
   impl_->frames_seen++;
   if (!impl_->logged_geometry) {
     HOLOSCAN_LOG_INFO("JpegEncoderOp: input {}x{} RGB8, stream width {}, quality {}/{}", width, height, stream_width_.get(),

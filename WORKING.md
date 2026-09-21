@@ -5,6 +5,23 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 (later) — cam_tuner flicker: black preview frames from an unsynchronised CUDA stream
+
+- User report: the live feed flickers. Probing `/stream.mjpg` from the dev box for 4 s (36 parts) showed
+  every other frame or so completely black (mean 0, always the same 26,227-byte JPEG) between good frames
+  (mean ≈ 43): the encoder was compressing an unwritten buffer, not a sensor or lighting effect.
+- Cause: Holoscan 3.9's `FormatConverterOp` converts RGBA16 → RGB8 on an operator-internal CUDA stream
+  (`receive_cuda_stream`) and attaches that stream to its output message. `JpegEncoderOp` ignored the
+  message stream and ran NPP/nvJPEG on its own `cudaStreamNonBlocking` stream, so at 3552×3556 (a few ms
+  of conversion) it often read the `UnboundedAllocator` buffer before the kernel had written it —
+  freshly allocated device memory is zero, hence black. At 1280×720 in the emulator the conversion was
+  fast enough that the race almost never showed.
+- Fix: `JpegEncoderOp::compute` calls `op_input.receive_cuda_stream("input")` (Holoscan syncs the received
+  stream to the operator's stream) and `JpegEncoder::WaitFor()` records an event on it that the encoder
+  stream waits for. `SnapshotOp` copies its raw frame with `cudaMemcpyAsync` on the same kind of stream
+  instead of a legacy-default-stream `cudaMemcpy`. Rule for future ops: never touch a received device
+  buffer from another stream without `receive_cuda_stream` (or a CudaStreamHandler `from_message`).
+
 ## 2026-09-21 (late) — cam_tuner on the real CAM4 at full resolution; GPU pool sizing
 
 - First launch on the test machine (`FULL_RAW10`, 30 fps) died after 12 frames: `Too many chunks
