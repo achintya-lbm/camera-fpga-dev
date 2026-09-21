@@ -5,6 +5,8 @@
 //   hsbctl rd ADDR [--count N]              read 32-bit register(s)
 //   hsbctl wr ADDR VALUE                    write a 32-bit register
 //   hsbctl i2c --bus B --addr A [--write "0x30 0x00"] [--read N]
+//   hsbctl i2c-scan --bus B                probe every 7-bit address
+//   hsbctl gpio [--pin N [--value 0|1] [--dir 0|1]]   HSB GPIO block
 //   hsbctl lanes --port J1A [--set 4]       DA322 MIPI lane count per port
 //   hsbctl dt [--port J1A --set 0x2C] [--clear]   DA322 data-type filter / detected data type
 //   hsbctl ptp [--wait S]                   PTP synchronisation status
@@ -133,6 +135,18 @@ int main(int argc, char** argv) {
   i2c->add_option("--write", i2c_write, "bytes to write, e.g. \"0x30 0x00\"");
   i2c->add_option("--read", i2c_read, "bytes to read back")->capture_default_str();
 
+  auto* i2c_scan = app.add_subcommand("i2c-scan", "probe every 7-bit address on an I2C bus");
+  unsigned scan_bus = hololink::CAM_I2C_BUS;
+  i2c_scan->add_option("--bus", scan_bus, "I2C bus")->capture_default_str();
+
+  auto* gpio = app.add_subcommand("gpio", "HSB GPIO pins: dump all, or set --pin/--value");
+  int gpio_pin = -1;
+  int gpio_value = -1;
+  int gpio_dir = -1;
+  gpio->add_option("--pin", gpio_pin, "pin number");
+  gpio->add_option("--value", gpio_value, "0/1 to drive the pin (sets direction to output)");
+  gpio->add_option("--dir", gpio_dir, "0 = output, 1 = input");
+
   auto* lanes = app.add_subcommand("lanes", "DA322 MIPI lane count");
   std::string lanes_port = "J1A";
   int lanes_set = -1;
@@ -220,6 +234,38 @@ int main(int argc, char** argv) {
       std::cout << "read:";
       for (auto b : reply) std::cout << fmt::format(" {:#04x}", b);
       std::cout << "\n";
+    } else if (*i2c_scan) {
+      auto bus = hl.get_i2c(scan_bus);
+      std::vector<unsigned> found;
+      for (unsigned addr = 0x08; addr <= 0x77; ++addr) {
+        try {
+          bus->i2c_transaction(addr, {}, 1, std::make_shared<hololink::Timeout>(0.2f));
+          found.push_back(addr);
+        } catch (const std::exception&) {
+        }
+      }
+      std::cout << fmt::format("bus {}: {} device(s) answered:", scan_bus, found.size());
+      for (auto a : found) std::cout << fmt::format(" {:#04x}", a);
+      std::cout << "\n";
+    } else if (*gpio) {
+      auto pins = hl.get_gpio(board->metadata);
+      const uint32_t count = pins->get_supported_pin_num();
+      if (gpio_pin >= 0) {
+        if (gpio_dir >= 0) pins->set_direction(static_cast<uint32_t>(gpio_pin), gpio_dir ? hololink::Hololink::GPIO::IN : hololink::Hololink::GPIO::OUT);
+        if (gpio_value >= 0) {
+          pins->set_direction(static_cast<uint32_t>(gpio_pin), hololink::Hololink::GPIO::OUT);
+          pins->set_value(static_cast<uint32_t>(gpio_pin), gpio_value ? 1u : 0u);
+        }
+        std::cout << fmt::format("pin {}: dir={} value={}\n", gpio_pin,
+                                 pins->get_direction(static_cast<uint32_t>(gpio_pin)) == hololink::Hololink::GPIO::IN ? "in" : "out",
+                                 pins->get_value(static_cast<uint32_t>(gpio_pin)));
+      } else {
+        std::cout << fmt::format("{} GPIO pins\n", count);
+        for (uint32_t pin = 0; pin < count; ++pin) {
+          std::cout << fmt::format("  pin {:2}: dir={} value={}\n", pin,
+                                   pins->get_direction(pin) == hololink::Hololink::GPIO::IN ? "in " : "out", pins->get_value(pin));
+        }
+      }
     } else if (*lanes) {
       auto da322 = RequireDa322(*board, force);
       const unsigned camera = hsb::da322::ParsePort(lanes_port);
