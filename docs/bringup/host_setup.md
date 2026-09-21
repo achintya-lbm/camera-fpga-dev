@@ -19,6 +19,8 @@ The DA322 defaults to `192.168.0.2`; HSB examples expect the host at `192.168.0.
 On the test machine (netplan + systemd-networkd, no NetworkManager) run
 `sudo tools/host/setup_test_machine.sh <interface>` instead of the `nmcli` lines below; it installs
 the netplan drop-in `tools/host/netplan-hololink.yaml`, the `rmem_max` sysctl and the RX ring size.
+(The drop-in's definition id `aaa-hololink` must sort before cloud-init's `all-ethernet` catch-all,
+otherwise networkd keeps the DHCP catch-all for the port.)
 
 ```bash
 IF=<connectx interface>

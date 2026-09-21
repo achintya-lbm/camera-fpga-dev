@@ -1,13 +1,19 @@
 # Netplan drop-in for the DA322 link on the test machine (systemd-networkd renderer).
 # Install: sudo cp tools/host/netplan-hololink.yaml /etc/netplan/60-hololink.yaml && sudo netplan apply
+#
+# The definition id must sort before cloud-init's catch-all "all-ethernet" definition: networkd uses
+# the first matching .network file in lexical order, and netplan names them 10-netplan-<id>.network.
 # The interface name is machine-specific (docs/machines.md); the DA322 answers at 192.168.0.2.
 network:
   version: 2
   renderer: networkd
   ethernets:
-    enp130s0f0np0:
+    aaa-hololink:
+      match:
+        name: enp130s0f0np0
       dhcp4: false
       dhcp6: false
+      accept-ra: false
       addresses: [192.168.0.101/24]
       mtu: 1500
       optional: true
