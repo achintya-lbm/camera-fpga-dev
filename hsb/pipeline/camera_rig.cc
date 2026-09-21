@@ -149,8 +149,10 @@ CameraChain CameraRig::BuildChain(holoscan::Fragment& app, unsigned k, const Cam
   chain.config = cam;
   chain.sensor = sensor;
 
+  const int64_t csi_block_bytes = static_cast<int64_t>(info.width) * sizeof(uint16_t) * info.height;
+  HOLOSCAN_LOG_INFO("{}: csi_pool {} x {:.1f} MB", cam.label(), options.csi_pool_blocks, csi_block_bytes / 1e6);
   auto csi_pool = app.make_resource<holoscan::BlockMemoryPool>(
-      "csi_pool" + suffix, 1 /* device */, static_cast<int64_t>(info.width) * sizeof(uint16_t) * info.height, 2);
+      "csi_pool" + suffix, 1 /* device */, csi_block_bytes, options.csi_pool_blocks);
   chain.csi_to_bayer = app.make_operator<hololink::operators::CsiToBayerOp>(
       "csi_to_bayer" + suffix, holoscan::Arg("allocator", csi_pool), holoscan::Arg("cuda_device_ordinal", config_.cuda_device));
   std::shared_ptr<hololink::csi::CsiConverter> converter = chain.csi_to_bayer;
@@ -214,8 +216,10 @@ CameraChain CameraRig::BuildChain(holoscan::Fragment& app, unsigned k, const Cam
         "image_processor" + suffix, holoscan::Arg("optical_black", sensor->optical_black()),
         holoscan::Arg("bayer_format", bayer_format), holoscan::Arg("pixel_format", static_cast<int>(sensor->get_pixel_format())),
         holoscan::Arg("cuda_device_ordinal", config_.cuda_device));
+    const int64_t bayer_block_bytes = static_cast<int64_t>(info.width) * 4 * sizeof(uint16_t) * info.height;
+    HOLOSCAN_LOG_INFO("{}: bayer_pool {} x {:.1f} MB", cam.label(), options.bayer_pool_blocks, bayer_block_bytes / 1e6);
     auto bayer_pool = app.make_resource<holoscan::BlockMemoryPool>(
-        "bayer_pool" + suffix, 1, static_cast<int64_t>(info.width) * 4 * sizeof(uint16_t) * info.height, 2);
+        "bayer_pool" + suffix, 1, bayer_block_bytes, options.bayer_pool_blocks);
     const std::string tensor_name = options.tensor_name.empty() ? fmt::format("cam{}", k) : options.tensor_name;
     chain.demosaic = app.make_operator<holoscan::ops::BayerDemosaicOp>(
         "demosaic" + suffix, holoscan::Arg("pool", bayer_pool), holoscan::Arg("generate_alpha", true),

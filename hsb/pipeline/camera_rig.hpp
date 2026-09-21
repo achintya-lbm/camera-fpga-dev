@@ -45,6 +45,14 @@ struct CameraChainOptions {
   std::string csv_path;       // per-frame CSV for FrameStatsOp ("" = none)
   std::string tensor_name;    // demosaic output tensor name (default "camK")
   ChainTapFactory tap_after_stats;  // e.g. a snapshot operator (see apps/cam_tuner)
+  // GPU pools. A block stays referenced while its frame sits in a downstream queue (capacity 1)
+  // or is being processed, so a pool needs 2 blocks per consuming operator plus one to allocate;
+  // with too few blocks the producer throws ("Too many chunks allocated") instead of applying
+  // back-pressure. CSI blocks (CsiToBayerOp output) feed ImageProcessorOp and BayerDemosaicOp
+  // (4 needed); RGBA16 blocks (demosaic output) feed one or two consumers (2-3 needed). At
+  // 3552x3556 a CSI block is 25 MB and an RGBA16 block 101 MB.
+  uint64_t csi_pool_blocks = 6;
+  uint64_t bayer_pool_blocks = 4;
 };
 
 struct CameraChain {
