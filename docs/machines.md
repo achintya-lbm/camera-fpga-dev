@@ -67,6 +67,9 @@ Inventory taken 2026-09-21 over SSH:
   (`ibv_devinfo`), `linuxptp`. `libibverbs-dev` is not needed (headers from `tools/workspace/rdma_core`).
 - `sudo` needs a password (user is in the `sudo` group): package installs, netplan and sysctl changes
   are run by hand from `tools/host/`.
+- Kernel command line has no IOMMU option (Intel DMAR active, 29 IOMMU groups): RoCE writes into GPU
+  memory fault (`docs/bringup/host_setup.md` §2b) until `iommu=pt` is added. NIC↔GPU topology: `NODE`
+  (same NUMA node, different PCIe host bridges).
 - Attached: DA322 (`192.168.0.2`) with 4× FSM:GO IMX676 on FPA-A/P22 adapters (CAM4 = J1D for the
   first-light captures)
 - Checkout: `~/robotics/camera-fpga-dev` (rsync from the dev box until the repo is pushed); Bazel

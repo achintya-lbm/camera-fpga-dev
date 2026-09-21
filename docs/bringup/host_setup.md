@@ -34,6 +34,21 @@ ping -c 3 192.168.0.2
 
 MTU stays at 1500 until the FPGA build is known to support 4096 (`DESIGN.md` §4.2).
 
+## 2b. IOMMU and GPUDirect RDMA (RoCE receiver)
+
+With the Intel IOMMU in its default (DMA remapping) mode the NIC's RDMA writes into GPU memory
+(`ibv_reg_dmabuf_mr`) fault (`journalctl -k`: `DMAR: [DMA Write NO_PASID] Request device [<nic>] fault
+addr ... Present bit in first-level paging entry is clear`) and the received frames stay zero while the
+completions still arrive. Put the IOMMU in passthrough (or disable it) and reboot:
+
+```bash
+sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 iommu=pt"/' /etc/default/grub
+sudo update-grub && sudo reboot
+cat /proc/cmdline   # must show iommu=pt
+```
+
+The Linux (UDP) receiver is unaffected and sustained 4.95 Gbps with 0 drops on the test machine.
+
 ## 3. PTP (host is the grandmaster)
 
 ```bash

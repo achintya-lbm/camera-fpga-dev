@@ -27,5 +27,17 @@ Repeat A1–C3 on the Linux receiver for reference and at payload 4096 if the FP
 
 ## Results log
 
-_No measurements yet (M4/M5)._ Record: date, machine (`docs/machines.md` name), bitstream version,
-hololink commit, receiver memory path (GPU VRAM / pinned host), CSV file path under `captures/`.
+2026-09-21, test machine, DA322 v2511, hololink 6930609 + Tauro patch, **Linux receiver** (RoCE blocked
+by the host IOMMU, see host_setup §2b), one camera on J1D, 12 s per mode, CSVs under
+`~/captures/imx676_cam4/<mode>/` on the test machine (`docs/hardware/imx676_samples.md`):
+
+| Row | Mode | fps | Measured | Result |
+|---|---|---|---|---|
+| A1 | `FULL_RAW10` | 32.65 | 4.124 Gbps CSI, 0 gaps/drops, CRC clean | PASS |
+| A2 | `FULL_RAW12` | 32.65 | 4.948 Gbps CSI, 0 gaps/drops, CRC clean | PASS |
+| — | `BIN2_RAW12` | 32.65 | 1.237 Gbps | PASS |
+| — | `CROP_3552X2160_RAW10` | 52.97 | 4.064 Gbps | PASS |
+| — | `CROP_1280X720_RAW10` | 149.23 | 1.375 Gbps | PASS |
+
+Record for later rows: date, machine, bitstream version, hololink commit, receiver memory path
+(GPU VRAM / pinned host), CSV path.

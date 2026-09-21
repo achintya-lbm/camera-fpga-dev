@@ -1,6 +1,6 @@
 # DESIGN — Holoscan Sensor Bridge camera ingest on the Tauro DA322 with 4× FRAMOS FSM:GO IMX676
 
-Status: **M2 C++ stack built and verified against the HSB emulator (board layer, IMX676 driver, hsbctl, cam_player, bandwidth_test); M1 hardware bring-up on the test machine next** (2026-09-18).
+Status: **First light on the DA322 (2026-09-21): IMX676 on CAM4 streams every catalogue mode at its ceiling over the Linux receiver, samples in `docs/hardware/imx676_samples.md`; RoCE receive blocked by the host IOMMU (M4)**.
 Companion files: `TODO.md` (milestone checklists), `WORKING.md` (dated lab notebook),
 `docs/hardware/da322.md` (pin tables transcribed from the DA322 manual v1.6), `docs/machines.md`
 (the only place that records which computers we use and what they contain).
@@ -223,6 +223,12 @@ active, and the result per machine is recorded in `docs/machines.md`.
 
 ---
 
+**Test-machine status (2026-09-21):** the RoCE receiver's RDMA writes into GPU memory are blocked by
+the Intel IOMMU (`DMAR: [DMA Write NO_PASID] Request device [<NIC>] fault ... Present bit in first-level
+paging entry is clear`): completions arrive at the frame rate but the buffers stay zero. The Linux
+(UDP) receiver works and sustained 4.95 Gbps (FULL_RAW12 @ 32.6 fps, 0 drops) on the 20-core PREEMPT_RT
+host. Fix candidates for M4: boot with `iommu=pt` (or `intel_iommu=off`), see `docs/bringup/host_setup.md`.
+
 ## 5. Software stack and version pins
 
 | Component | Pin (phase 1) | Why |
@@ -361,6 +367,19 @@ without the filter the count must be measured from `bytes_written`. Bayer order 
 - Nothing outside this directory (and `fpga/boards/da322`) may hard-code DA322 addresses or pins.
 
 ---
+
+
+**Bring-up facts measured on the board (2026-09-21):**
+- After every `Hololink::reset()` the vendor stack calls `camera.setup_clock()`; the DA322 build of
+  hololink implements it as FPGA register `0x8 ← 0x30` (clock synthesizer/output enable), 100 ms,
+  `0x8 ← 0x0F` (camera power enables), 100 ms. **Without it the MIPI receivers never see a packet**
+  while I2C and the control plane work normally. `Da322Board::EnableClocksAndCameraPower()`.
+- Connector pin 17 (CAM_EN) is HSB GPIO pin k (k = camera index); all GPIOs read 0 after reset, so the
+  sensor does not answer on I2C until the pin is driven high (`Da322Board::PowerCycleCamera`).
+- The per-frame metadata block (frame_number, bytes_written, crc, timestamps) is populated on the
+  Linux receiver path. The FPGA CRC matches the host JAMCRC of the frame (`FrameCheckOp`).
+- `MIPI_DT_STAT` latches the streamed data type (0x2B/0x2C) once the receiver is enabled; embedded-data
+  lines do not reach the host (`leading_lines: 0` decodes correctly).
 
 ## 9. Encoder path (NVENC AV1)
 

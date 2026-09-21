@@ -5,6 +5,34 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 (evening) — First light on CAM4; every mode catalogued at its ceiling
+
+**Root cause of the silent receivers**: the vendor players call `camera.setup_clock()` after
+`hololink.reset()`. In the Tauro build of hololink this is FPGA register `0x8 ← 0x30` (clock
+synthesizer/output enable), 100 ms, `0x8 ← 0x0F` (camera power enables). Found by reading the colleague's
+working DA322 + IMX708 tree (`elijahstangerjones-LBM/holoscan_vibe_code`, commits 0a6e107..203f5c1):
+their driver keeps the same `setup_clock()` call and their README flags the FPGA lane-count register
+and the "no LP-11 toggle before programming" rule, both of which we already had. One register write
+later `MIPI_DT_STAT` latched 0x2C and frames flowed. `Da322Board::EnableClocksAndCameraPower()`
+now runs after every reset (rig, hsbctl).
+
+**Results** (Linux receiver, CAM4, exposure 2 ms, gain 0 dB, 12 s per mode, `capture_modes.sh`):
+FULL_RAW10 32.65 fps / 4.12 Gbps, FULL_RAW12 32.65 / 4.95, BIN2_RAW12 32.65 / 1.24,
+CROP_3552X2160_RAW10 52.97 / 4.06, CROP_1280X720_RAW10 149.23 / 1.38 — 0 gaps, 0 drops, CRC clean
+(38–178 frames checked per mode). Predictions were 32.59 / 52.97 / 149.28: the catalogue's timing model
+holds (sensor clock ≈ 0.2 % fast). Samples and table: `docs/hardware/imx676_samples.md`,
+images under `docs/samples/imx676/` (LFS). Frame metadata (frame_number, bytes_written, CRC, PTP
+timestamps) is populated on the Linux path; PTP not yet synchronised (`timestamp_s` ≈ 9).
+
+**RoCE path**: completions arrive at the frame rate but GPU buffers stay zero; `journalctl -k` shows
+`DMAR: [DMA Write NO_PASID] Request device [82:00.0] fault ... Present bit in first-level paging entry
+is clear` — the NIC's RDMA writes into the GPU dma-buf are blocked by the Intel IOMMU. Needs
+`iommu=pt` on the kernel command line (sudo + reboot), see `docs/bringup/host_setup.md` §2b.
+
+**Other**: exposure sweep at gain 0 (1/3/8 ms → 1 %/7.6 %/12 % clipped on the backlit chart) → 2 ms
+for the catalogue; decoder white balance now ignores clipped pixels; dumps are named by a running
+index because the RoCE path delivered frame_number 0.
+
 ## 2026-09-21 — First hardware session: board and sensor talk, but no CSI data reaches the FPGA
 
 **Works**

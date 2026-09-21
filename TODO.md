@@ -26,16 +26,18 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Vendor container: clone HSB, `git checkout 6930609`, apply patch, `docker/build.sh --dgpu`, `docker/demo.sh`
 - [ ] Enumerate DA322 (`tools/enumerate` / `hololink enumerate`): record UUID, board-id, `hsb_ip_version`, FPGA date; flash v2511 if different
 - [ ] Camera 1 on J1A via P22: `hs_ctl.py 0x30000028 --set 0x6` (4 lanes), `MIPI_DT_CTRL[7:0]=0x2B`; TCA6408 (0x20) power/reset sequence (≥180 ms); read IMX676 ID registers (or `hsbctl sensor --port J1A probe` from the Bazel build)
-- [ ] Confirm the FPA-A/P22-V2 TCA6408 bit assignment on the bench (FRAMOS docs: P0/P1 power enables, P2 reset, P3 XMASTER, P4–P6 SLAMODE, P7 TENABLE; now in `p22_adapter.hpp`) with `hsbctl i2c --bus 4 --addr 0x20` and `hsbctl sensor --port J1D probe`
+- [x] FPA-A/P22-V2 TCA6408 bit assignment confirmed on the bench (P4/P5 = SLAMODE0/1 move the address to 0x10/0x36, P7 = TENABLE stops I2C; P0–P2 have no visible effect, the DA322 CAM_EN drives the module reset); the adapter's power-on state already runs the module
 - [ ] Check `framosimaging/framos-holoscan-drivers` and `framos-jetson-drivers` for IMX676 tables (reference only)
 - [ ] Python IMX676 driver in the vendor container (`imx676.py`, `imx676_mode.py`) mirroring `hsb/sensors/imx676`: FULL_RAW10 @ 1188 Mbps (≤ 32.6 fps), FULL_RAW12 30 @ 1440 Mbps, BIN2_RAW12 @ 891 Mbps, CROP_3552X2160_RAW10, CROP_1280X720_RAW10
-- [ ] Validate the HMAX minimum per lane rate against the Sony datasheet (10-bit at 1188 Mbps may allow < 628 → higher FULL_RAW10 fps); confirm INCK_SEL 0x01 / 37.125 MHz (FRAMOS: 37.125 MHz on-board clock) and the fixed init block
+- [x] INCK_SEL 0x01 / 37.125 MHz and the fixed init block confirmed streaming (measured 32.65 fps at HMAX 628 / VMAX 3628, i.e. the frame clock is ~0.2 % above 74.25 MHz nominal)
+- [ ] Validate the HMAX minimum per lane rate against the Sony datasheet (10-bit at 1188 Mbps may allow < 628 → higher FULL_RAW10 fps)
 - [ ] Binning experiments (FRAMOS's driver is conservative: VMAX ≥ 3556 + 72 and HMAX 628 in BIN2 at 891 Mbps → 32.6 fps, while Sony quotes 240 fps for binned 1080p): try VMAX = 1778 + 72 = 1850 and smaller HMAX in `BIN2_RAW12`, check frame_number continuity / bytes_written; try MDBIT = 0 (10-bit output) with ADDMODE = 1 and see whether the DT filter sees 0x2B and images are sane
 - [ ] Determine embedded-data lines / `start_byte` from `bytes_written` with and without the DT filter
 - [ ] First light: `linux_imx676_player.py`; then 4 ports via `multi_player.py`-style config; confirm J1A..J1D ↔ sensor_id ↔ I2C bus mapping and CAM_EN polarity
 - [ ] Measure 3.3 V current per camera port; record link stats, PTP offset
-- [ ] **First light blocker (2026-09-21):** sensor programmed and started on CAM1/CAM4 but the FPGA sees no CSI packets (`MIPI_DT_STAT` 0, no frame-end events, no data packets). Bench checks: FFC seating/orientation on J1D and P22 J2 (pins 1–16 are the MIPI pairs), 3.3 V/3V8 under load, scope the clock lane after XMSTA; validate the DA322 receive path with a Raspberry Pi IMX219/IMX477 in the vendor container; ask Tauro about D-PHY timing/continuous-clock requirements of the soft D-PHY RX
-- [ ] Confirm the DA322 data-type filter drops the IMX676 embedded-data line (`leading_lines: 0`), else set `leading_lines` in the rig config
+- [x] First light (2026-09-21): the missing step was the vendor's `setup_clock()` (FPGA reg 0x8 ← 0x30, 0x0F) after reset; CAM4 streams every mode at its ceiling over the Linux receiver, 0 drops, CRC clean (`docs/hardware/imx676_samples.md`)
+- [ ] RoCE receiver: RDMA writes into GPU memory faulted by the Intel IOMMU (`DMAR ... Present bit in first-level paging entry is clear`, NIC 82:00.0); boot the test machine with `iommu=pt` (or `intel_iommu=off`) and re-test `--receiver roce`
+- [x] Confirm the DA322 data-type filter drops the IMX676 embedded-data line (`leading_lines: 0` decodes correctly in every mode)
 - [ ] Exit: stable video on 4 ports at a low-bandwidth mode; `docs/hardware/imx676_modes.md` written
 
 ## M2 — Bazel C++ stack
