@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
       for (unsigned addr = 0x08; addr <= 0x77; ++addr) {
         try {
           // One register-pointer byte then a read: ACKed by expanders, EEPROMs and sensors alike.
-          bus->i2c_transaction(addr, {0x00}, 1, std::make_shared<hololink::Timeout>(0.2f));
+          bus->i2c_transaction(addr, {0x00}, 1, hololink::Timeout::i2c_timeout());
           found.push_back(addr);
         } catch (const std::exception&) {
         }
