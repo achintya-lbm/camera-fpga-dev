@@ -207,9 +207,9 @@ CsiLayout ConfigureConverter(const ModeInfo& mode, hololink::csi::CsiConverter& 
   return CsiLayout{start_byte, line_bytes, start_byte + line_bytes * mode.height + trailing_bytes};
 }
 
-std::string Describe(const ModeInfo& mode, const Timing& timing) {
+std::string Describe(const ModeInfo& mode, const Timing& timing, unsigned lanes) {
   return fmt::format("{} {}x{} RAW{} lanes={} rate={} Mbps HMAX={} VMAX={} fps={:.3f} payload={:.3f} Gbps",
-                     mode.name, mode.width, mode.height, BitsPerPixel(mode.pixel_format), kLanes,
+                     mode.name, mode.width, mode.height, BitsPerPixel(mode.pixel_format), lanes,
                      LaneRateMbps(timing.lane_rate), timing.hmax, timing.vmax, timing.fps,
                      PayloadGbps(mode, timing.fps));
 }

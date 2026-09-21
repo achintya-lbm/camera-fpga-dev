@@ -56,7 +56,7 @@ void NativeImx676Sensor::configure(CameraMode mode) {
   if (!probe()) {
     throw std::runtime_error(fmt::format("IMX676 at 0x{:02X} on I2C bus {} does not answer", options_.i2c_address, i2c_bus_));
   }
-  HSB_LOG_INFO("IMX676 bus={} configuring {}", i2c_bus_, Describe(info, *timing_));
+  HSB_LOG_INFO("IMX676 bus={} configuring {}", i2c_bus_, Describe(info, *timing_, options_.lanes));
   apply(InitSettings());
   write_register(reg::LANEMODE, options_.lanes == 2 ? 0x01 : 0x03);
   apply(BitDepth(info.pixel_format));

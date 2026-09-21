@@ -128,7 +128,7 @@ void CameraRig::ConfigureSensors() {
       board_->PowerCycleCamera(cam.port);
     }
     sensor.configure(cam.mode);
-    HOLOSCAN_LOG_INFO("{}: {}", cam.label(), hsb::imx676::Describe(sensor.mode_info(), sensor.timing()));
+    HOLOSCAN_LOG_INFO("{}: {}", cam.label(), hsb::imx676::Describe(sensor.mode_info(), sensor.timing(), cam.lanes));
   }
 }
 

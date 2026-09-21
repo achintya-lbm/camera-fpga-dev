@@ -34,6 +34,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Determine embedded-data lines / `start_byte` from `bytes_written` with and without the DT filter
 - [ ] First light: `linux_imx676_player.py`; then 4 ports via `multi_player.py`-style config; confirm J1A..J1D ↔ sensor_id ↔ I2C bus mapping and CAM_EN polarity
 - [ ] Measure 3.3 V current per camera port; record link stats, PTP offset
+- [ ] **First light blocker (2026-09-21):** sensor programmed and started on CAM1/CAM4 but the FPGA sees no CSI packets (`MIPI_DT_STAT` 0, no frame-end events, no data packets). Bench checks: FFC seating/orientation on J1D and P22 J2 (pins 1–16 are the MIPI pairs), 3.3 V/3V8 under load, scope the clock lane after XMSTA; validate the DA322 receive path with a Raspberry Pi IMX219/IMX477 in the vendor container; ask Tauro about D-PHY timing/continuous-clock requirements of the soft D-PHY RX
 - [ ] Confirm the DA322 data-type filter drops the IMX676 embedded-data line (`leading_lines: 0`), else set `leading_lines` in the rig config
 - [ ] Exit: stable video on 4 ports at a low-bandwidth mode; `docs/hardware/imx676_modes.md` written
 

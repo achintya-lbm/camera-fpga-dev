@@ -5,6 +5,47 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 — First hardware session: board and sensor talk, but no CSI data reaches the FPGA
+
+**Works**
+- Test machine set up (`tools/host/setup_test_machine.sh`, netplan drop-in had to sort before cloud-init's
+  catch-all). `hsbctl enumerate/info`: TauroTech DA322, board id 9, `hsb_ip_version 0x2511`, datecode
+  `0x09013454`, MAC `CA:FE:C0:FF:EE:00`, FPGA UUID as expected, `mlx5_0` ↔ `enp130s0f0np0`, open NVIDIA
+  kernel modules (dual MIT/GPL), `/dev/infiniband` usable without root.
+- Vendor bitstream defaults: DT filter 0x2B on all ports, lane setting 0x6 (4 lanes) on all ports.
+- The DA322's per-connector **CAM_EN (pin 17) is HSB GPIO pin k** (vendor `examples/gpio.py`,
+  `GPIO_CAMn_PWR_EN_L`, driven HIGH to enable). All GPIOs are 0 after `Hololink::reset()`, so the sensor
+  does not answer until the pin is set; `Da322Board::PowerCycleCamera()` now does the vendor's
+  low 1 s / high 1 s cycle. Added `hsbctl gpio` and `hsbctl i2c-scan`.
+- All four ports carry a P22 adapter (TCA6408 @ 0x20) and a module (EEPROM @ 0x56, reads 0xFF);
+  IMX676 answers at 0x1A on CAM1 and CAM4 once enabled. Power-on values: STANDBY 1, XMSTA 1,
+  INCK_SEL 0, VMAX 0x0F64, HMAX 0x0274 (628).
+- The full driver sequence runs without I2C errors (164 writes); every register reads back as written
+  (INCK_SEL 1, DATARATE_SEL, ADBIT/MDBIT, VMAX, HMAX, LANEMODE, SHR0, vendor init block, EXTMODE 4,
+  XVS_XHS_DRV 0x0F). Our tables are byte-identical to the FRAMOS `fr_imx676_mode_tbls.h` (checked
+  programmatically). STANDBY→0 and XMSTA→0 hold; registers survive streaming attempts (no brown-out reset).
+
+**Does not work**: no CSI packets ever reach the FPGA
+- `MIPI_DT_STAT` (latches every DT except 0x00/0x01) stays 0 on all ports; HSB frame-end events
+  (`CTRL_EVT_STAT` with SIF 16..19 enabled) never fire; SIF registers stay 0; the NIC receives only
+  control-plane replies (60-byte bursts during I2C) and one BOOTP per second — no data packets. Both the
+  RoCE and Linux receivers time out.
+- Tried on CAM4 (and CAM1): FULL_RAW12/FULL_RAW10/BIN2_RAW12/CROP_1280X720_RAW10; lane rates 594, 720,
+  891, 1188, 1440 (and 1782/2079/2376 above the D-PHY limit); 4 lanes and 2 lanes (sensor LANEMODE +
+  DA322 lane register); INCK_SEL 0..4; VCMODE 0/1; sensor TPG on; XMASTER (P3) low/high at reset;
+  TENABLE (P7) high (kills I2C, so it is the test-mode pin); PW_EN/RST expander pins in all combinations
+  and the adapter's power-on defaults (pins read 0x07 = both power enables and reset pulled high);
+  lane register rewritten while streaming. Result identical every time.
+- Ruled out: register transcription errors, I2C addressing, P22 expander state, SLAMODE (P4/P5 change
+  the address as documented), lane count, lane rate, INCK selection, bit depth, DT filter value, receiver
+  type. Not ruled out (needs the bench): whether the sensor actually drives the D-PHY lanes (3.3 V / 3V8
+  supply under load, module fault), and whether the DA322's soft D-PHY RX ever sees this module (FFC
+  seating on pins 1–16, lane/clock pairing vs the P22, receiver timing). A vendor-supported RPi camera
+  (IMX219/IMX477) on the same connector would validate the FPGA receive path independently.
+
+**Tooling**: `tools/capture/capture_modes.sh` + `raw_frame` decoder ready; `bandwidth_test --dump-dir`
+dumps verified on the emulator. Captures for the docs are blocked on the CSI link.
+
 ## 2026-09-21 — Towards first light on CAM4: P22 pin map, test-machine inventory, capture tooling
 
 **Findings**

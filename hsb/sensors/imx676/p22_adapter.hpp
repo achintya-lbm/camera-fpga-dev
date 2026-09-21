@@ -2,7 +2,11 @@
 // driven by a TCA6408 at I2C 0x20 on the camera bus. Pin assignment from the FRAMOS documentation
 // (docs.framos.com, FPA-A/P22-V2): P0 PW_EN_0, P1 PW_EN_1, P2 RST_0, P3 XMASTER0, P4 SLAMODE0,
 // P5 SLAMODE1, P6 SLAMODE2, P7 TENABLE. Polarities follow the FRAMOS Linux driver (reset high = run,
-// XMASTER low = master mode); confirm on the bench with `hsbctl i2c --bus 4 --addr 0x20`.
+// XMASTER low = master mode). Bench observations 2026-09-21 (DA322 CAM4, `hsbctl i2c --bus 4 --addr 0x20`):
+// power-on pin levels read 0x07 (P0..P2 pulled high, the rest low), so the adapter already runs the
+// module without any expander write; driving P0/P1/P2 low neither cuts the sensor's I2C nor resets it
+// (the DA322's CAM_EN line does), P4/P5 high change the I2C address (SLAMODE), P7 high makes the
+// sensor stop answering (TENABLE). Keep TENABLE low.
 #pragma once
 
 #include <cstdint>

@@ -126,6 +126,6 @@ struct CsiLayout {
 CsiLayout ConfigureConverter(const ModeInfo& mode, hololink::csi::CsiConverter& converter,
                              uint32_t leading_lines, uint32_t trailing_bytes = 0);
 
-std::string Describe(const ModeInfo& mode, const Timing& timing);
+std::string Describe(const ModeInfo& mode, const Timing& timing, unsigned lanes = kLanes);
 
 }  // namespace hsb::imx676
