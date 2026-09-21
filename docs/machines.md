@@ -46,16 +46,28 @@ Role: builds, unit tests, HSB-emulator loopback tests. **Not** usable for RoCE o
 - Tools: bazelisk, gcc 13.3, clang 18, autotools. No CUDA toolkit, Holoscan SDK or Radiant installed
   on the host (Bazel fetches CUDA and builds Holoscan from source)
 
-### Test machine — `roadkill0` (SSH `walden-lab@roadkill0`)
+### Test machine — `roadkill0` (SSH `walden-lab@roadkill0.local`, mDNS; 10.230.20.35 on the lab LAN)
 
 Role: everything that touches hardware: DA322, cameras, RoCE receive, bandwidth matrix, encode benchmarks.
+Inventory taken 2026-09-21 over SSH:
 
-- GPU: NVIDIA RTX PRO 6000 Blackwell Max-Q — workstation-class, so the GPUDirect RDMA receive path is
-  expected to work; compute capability 12.0 (`sm_120`). Verify:
-  `nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv`
-- NIC: NVIDIA/Mellanox ConnectX with 10G transceivers (model noted earlier as ConnectX-6 Lx; confirm with
-  `ibv_devinfo`, `ethtool -i <if>`)
-- Attached: DA322 (`192.168.0.2`) with 4× FSM:GO IMX676 on FPA-A/P22 adapters
-- To record during M1: OS + kernel, driver version and flavour (`modinfo nvidia | grep license` must show
-  the open modules for DMA-BUF), NIC firmware, PCIe topology (`nvidia-smi topo -m`) between NIC and GPU,
-  which receive memory path `bandwidth_test` reports (GPU VRAM vs pinned host)
+- OS: Ubuntu 24.04.4 LTS, kernel 6.18.46-rt (PREEMPT_RT); 20 cores, 62 GB RAM, 831 GB free
+- GPU: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, compute capability 12.0 (`sm_120`),
+  driver 595.91.07. Workstation-class, so the GPUDirect RDMA receive path is expected to work
+  (still to confirm: `modinfo nvidia | grep license` for the open modules, `nvidia-smi topo -m`)
+- NIC: NVIDIA/Mellanox ConnectX (`mlx5_core`, firmware 26.43.2566, RDMA devices `mlx5_0`/`mlx5_1`),
+  ports `enp130s0f0np0` (link up, 10 Gb/s, direct-attach copper to the DA322) and `enp130s0f1np1` (no
+  carrier). `/dev/infiniband/uverbs*` are world read/write and `ulimit -l` ≈ 8 GB, so RoCE works
+  without root. Lab LAN on `enp129s0`.
+- Network management: netplan + systemd-networkd (`/etc/netplan/50-cloud-init.yaml`); NetworkManager
+  inactive. The DA322 port had no IPv4 address on 2026-09-21 → `sudo tools/host/setup_test_machine.sh`.
+  `net.core.rmem_max` = 4 MB (HSB recommends 31 MB for the Linux receiver; the script sets it).
+- Tools present: bazel/bazelisk, gcc-13/g++-13, git, git-lfs, patch, unshare, python3 (numpy 1.26,
+  Pillow 10.2), docker; `libvulkan1` and `libibverbs1` installed. Missing: `ibverbs-utils`
+  (`ibv_devinfo`), `linuxptp`. `libibverbs-dev` is not needed (headers from `tools/workspace/rdma_core`).
+- `sudo` needs a password (user is in the `sudo` group): package installs, netplan and sysctl changes
+  are run by hand from `tools/host/`.
+- Attached: DA322 (`192.168.0.2`) with 4× FSM:GO IMX676 on FPA-A/P22 adapters (CAM4 = J1D for the
+  first-light captures)
+- Checkout: `~/robotics/camera-fpga-dev` (rsync from the dev box until the repo is pushed); Bazel
+  output under `~/.cache/bazel`

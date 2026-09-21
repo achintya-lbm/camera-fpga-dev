@@ -5,6 +5,36 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 — Towards first light on CAM4: P22 pin map, test-machine inventory, capture tooling
+
+**Findings**
+- FRAMOS documents the FPA-A/P22-V2 expander (TCA6408 @ 0x20): P0 PW_EN_0, P1 PW_EN_1, P2 RST_0,
+  P3 XMASTER0, P4 SLAMODE0, P5 SLAMODE1, P6 SLAMODE2, P7 TENABLE. Polarities taken from the FRAMOS
+  driver (reset high = run, XMASTER low = master). `p22_adapter.hpp` now uses this map instead of
+  placeholders; bench confirmation stays on the M1 list.
+- Test machine reachable as `walden-lab@roadkill0.local` (mDNS; the bare name does not resolve from the
+  dev box). Inventory in `docs/machines.md`: Ubuntu 24.04.4, kernel 6.18.46-rt, RTX PRO 6000 Blackwell
+  Max-Q (`sm_120`, driver 595.91.07), ConnectX `mlx5` fw 26.43.2566, `enp130s0f0np0` linked at 10 Gb/s
+  over DAC to the DA322, `/dev/infiniband/uverbs*` world-rw, memlock ≈ 8 GB, bazel/gcc-13/git-lfs/patch
+  present. **Blocker:** the DA322 port has no IPv4 address (netplan/systemd-networkd) and `sudo` needs a
+  password → `tools/host/setup_test_machine.sh` written for the user to run.
+- Native build of `//apps/...` and `//hsb/cli/...` started on the test machine (`~/robotics/camera-fpga-dev`,
+  synced with rsync; log `/tmp/bazel_build.log`).
+
+**Tooling added**
+- `FrameCheckOp` raw frame dumps (`bandwidth_test --dump-dir --dump-every --dump-limit`): `.raw` + JSON
+  sidecar (mode, geometry, lane rate, HMAX/VMAX, fps, frame number, CRC). Verified on the emulator
+  (two 18.9 MB FULL_RAW12 frames).
+- `tools/py:raw_frame` (numpy + Pillow): unpacks CSI-2 RAW10/RAW12, grey-world WB, auto gain, sRGB;
+  writes a half-resolution JPEG preview, a 1:1 centre crop PNG and per-channel statistics. Decoded the
+  emulator's synthetic gradient correctly (R ramps left→right, B top→bottom, constant G, moving bar).
+- `tools/capture/capture_modes.sh` + `catalog.py`: one command to capture every IMX676 mode on a port
+  at its maximum rate, decode the dumps and produce a markdown catalogue for `docs/`.
+
+**Next**
+- After the network setup on the test machine: `hsbctl enumerate`, `hsbctl sensor --port J1D probe`,
+  `tools/capture/capture_modes.sh --port J1D`, then `docs/hardware/imx676_samples.md`.
+
 ## 2026-09-21 — Can the LFCPNX-100-9CBG256I run the IMX676 at 60 fps 10-bit? No.
 
 Checked against the CertusPro-NX Family Data Sheet FPGA-DS-02086-2.2 (Jan 2025) and the High-Speed I/O

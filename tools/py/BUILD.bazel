@@ -1,4 +1,4 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,4 +30,16 @@ py_test(
     imports = ["."],
     main = "analysis/bandwidth_test.py",
     deps = [":analysis"],
+)
+
+# Decode raw CSI-2 frame dumps (bandwidth_test --dump-dir) into JPEG/PNG previews with statistics.
+py_binary(
+    name = "raw_frame",
+    srcs = ["analysis/raw_frame.py"],
+    imports = ["."],
+    main = "analysis/raw_frame.py",
+    deps = [
+        "@py_deps//numpy",
+        "@py_deps//pillow",
+    ],
 )

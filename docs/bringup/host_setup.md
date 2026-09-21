@@ -16,6 +16,9 @@ sudo apt-get install -y gcc-13 g++-13 make automake autoconf libtool-bin libvulk
 ## 2. Network to the DA322
 
 The DA322 defaults to `192.168.0.2`; HSB examples expect the host at `192.168.0.101/24`.
+On the test machine (netplan + systemd-networkd, no NetworkManager) run
+`sudo tools/host/setup_test_machine.sh <interface>` instead of the `nmcli` lines below; it installs
+the netplan drop-in `tools/host/netplan-hololink.yaml`, the `rmem_max` sysctl and the RX ring size.
 
 ```bash
 IF=<connectx interface>
