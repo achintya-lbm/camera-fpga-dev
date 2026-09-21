@@ -94,13 +94,13 @@ std::optional<LaneRate> FastestAllowedLaneRate(const ModeInfo& mode, unsigned ma
   return best;
 }
 
-uint16_t HmaxFor(LaneRate rate) {
+uint16_t HmaxFor(LaneRate rate, unsigned lanes) {
   switch (rate) {
-    case LaneRate::k2376: return 318;
+    case LaneRate::k2376: return lanes == 2 ? 628 : 318;
     case LaneRate::k2079: return 366;  // sensor default; the reference driver leaves it untouched
     case LaneRate::k1782: return 314;
     case LaneRate::k1440: return 628;
-    case LaneRate::k1188: return 628;
+    case LaneRate::k1188: return static_cast<uint16_t>(628 * (4 / (lanes == 2 ? 2 : 4)));
     case LaneRate::k891: return 628;
     case LaneRate::k720: return 1256;
     case LaneRate::k594: return 1256;
@@ -171,7 +171,8 @@ uint16_t GainRegisterForDb(double gain_db) {
 }
 
 Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
-                  std::optional<LaneRate> lane_rate_override) {
+                  std::optional<LaneRate> lane_rate_override, unsigned lanes) {
+  if (lanes != 2 && lanes != 4) throw std::invalid_argument("IMX676 supports 2 or 4 lanes");
   LaneRate rate;
   if (lane_rate_override) {
     rate = *lane_rate_override;
@@ -191,7 +192,7 @@ Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
     }
     rate = *best;
   }
-  const uint16_t hmax = HmaxFor(rate);
+  const uint16_t hmax = HmaxFor(rate, lanes);
   const double wanted = fps > 0 ? fps : mode.default_fps;
   const uint32_t vmax = VmaxForFps(mode, hmax, wanted);
   return Timing{rate, hmax, vmax, FpsFor(hmax, vmax)};

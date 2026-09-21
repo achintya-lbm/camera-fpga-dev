@@ -83,6 +83,7 @@ void CameraRig::Connect(double enumeration_timeout_s) {
     options.use_p22_adapter = config_.p22_enabled;
     options.p22_address = config_.p22_address;
     options.max_lane_rate_mbps = config_.lane_rate_limit_mbps;
+    options.lanes = cam.lanes;
     if (cam.lane_rate_mbps) {
       auto rate = hsb::imx676::LaneRateFromMbps(*cam.lane_rate_mbps);
       if (!rate) throw std::runtime_error(fmt::format("{}: {} Mbps is not an IMX676 lane rate", cam.label(), *cam.lane_rate_mbps));

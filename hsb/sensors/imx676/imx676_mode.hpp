@@ -87,7 +87,7 @@ inline constexpr uint16_t kBlackLevelRegisterDefault = 50;  // BLKLEVEL is in 10
 bool IsLaneRateAllowed(const ModeInfo& mode, LaneRate rate);
 std::optional<LaneRate> FastestAllowedLaneRate(const ModeInfo& mode, unsigned max_lane_rate_mbps);
 
-uint16_t HmaxFor(LaneRate rate);  // minimum HMAX for 4 lanes
+uint16_t HmaxFor(LaneRate rate, unsigned lanes = 4);  // minimum HMAX (reference driver values)
 double LineTimeSeconds(uint16_t hmax);
 uint32_t ReadoutLines(const ModeInfo& mode);  // lines the sensor scans (2x output height when binning)
 uint32_t MinVmax(const ModeInfo& mode);
@@ -113,7 +113,7 @@ struct Timing {
 // Picks the fastest allowed lane rate under the receiver's D-PHY limit (or the override) and
 // derives HMAX/VMAX for the requested frame rate (0 => mode default). Throws if impossible.
 Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
-                  std::optional<LaneRate> lane_rate_override = std::nullopt);
+                  std::optional<LaneRate> lane_rate_override = std::nullopt, unsigned lanes = 4);
 
 struct CsiLayout {
   uint32_t start_byte;

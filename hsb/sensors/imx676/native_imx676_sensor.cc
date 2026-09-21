@@ -45,7 +45,7 @@ void NativeImx676Sensor::set_mode(CameraMode mode) {
   height_ = info.height;
   pixel_format_ = info.pixel_format;
   bayer_format_ = hololink::csi::BayerFormat::RGGB;
-  timing_ = PlanTiming(info, options_.fps, options_.max_lane_rate_mbps, options_.lane_rate);
+  timing_ = PlanTiming(info, options_.fps, options_.max_lane_rate_mbps, options_.lane_rate, options_.lanes);
 }
 
 void NativeImx676Sensor::configure(CameraMode mode) {
@@ -58,6 +58,7 @@ void NativeImx676Sensor::configure(CameraMode mode) {
   }
   HSB_LOG_INFO("IMX676 bus={} configuring {}", i2c_bus_, Describe(info, *timing_));
   apply(InitSettings());
+  write_register(reg::LANEMODE, options_.lanes == 2 ? 0x01 : 0x03);
   apply(BitDepth(info.pixel_format));
   apply(ReadoutTable(info.readout));
   if (info.readout == Readout::kCrop) write_crop(info.crop);

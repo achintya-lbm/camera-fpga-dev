@@ -22,6 +22,7 @@ struct Imx676Options {
   bool use_p22_adapter = true;  // sequence power/reset through the adapter's TCA6408
   uint8_t p22_address = hsb::sensors::Tca6408::kDefaultAddress;
   hsb::sensors::P22Pins p22_pins{};
+  unsigned lanes = 4;                  // 2 or 4 (LANEMODE); the board's lane setting must match
   unsigned max_lane_rate_mbps = 1500;  // receiver D-PHY limit; DA322 soft D-PHY = 1500
   std::optional<LaneRate> lane_rate;   // force a DATARATE_SEL value
   double fps = 0;                      // 0 => mode default
