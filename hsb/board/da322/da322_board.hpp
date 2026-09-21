@@ -41,6 +41,10 @@ class Da322Board {
   bool CameraEnabled(unsigned camera);
   // Vendor bring-up sequence: disable, wait, enable, wait.
   void PowerCycleCamera(unsigned camera, unsigned off_ms = 1000, unsigned on_ms = 1000);
+  // Hololink::setup_clock(): the vendor players call it after every reset. On the DA322 build of
+  // hololink it writes FPGA register 0x8 (0x30: clock synthesizer/output enable, then 0x0F: camera
+  // power enables) with 100 ms pauses; the Renesas profile is unused (commented out by the vendor).
+  void EnableClocksAndCameraPower();
 
   // Lane count (1..4) and reference data type for one camera port; call after
   // Hololink::reset() and before the sensor starts streaming.

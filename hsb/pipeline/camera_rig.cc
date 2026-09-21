@@ -117,6 +117,10 @@ void CameraRig::ConfigureSensors() {
     hl.reset();
   }
   HOLOSCAN_LOG_INFO("hsb_ip_version={:#x} fpga_date={:#x}", hl.get_hsb_ip_version(), hl.get_fpga_date());
+  if (board_) {
+    HOLOSCAN_LOG_INFO("DA322: enabling clock synthesizer and camera power (setup_clock)");
+    board_->EnableClocksAndCameraPower();
+  }
   for (size_t k = 0; k < config_.cameras.size(); ++k) {
     const CameraConfig& cam = config_.cameras[k];
     auto& sensor = *sensors_[k];

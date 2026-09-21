@@ -75,6 +75,8 @@ bool Da322Board::CameraEnabled(unsigned camera) {
   return gpio()->get_value(GpioPinForCamera(camera)) == kGpioCameraEnableLevel;
 }
 
+void Da322Board::EnableClocksAndCameraPower() { hololink_->setup_clock({}); }
+
 void Da322Board::PowerCycleCamera(unsigned camera, unsigned off_ms, unsigned on_ms) {
   SetCameraEnable(camera, false);
   std::this_thread::sleep_for(std::chrono::milliseconds(off_ms));
