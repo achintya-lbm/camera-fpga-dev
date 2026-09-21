@@ -30,9 +30,26 @@ Reading the numbers:
   PREEMPT_RT host. The RoCE receiver is blocked by the host IOMMU for now (`docs/bringup/host_setup.md`).
 - Black level reads 50 (10-bit) / 199 (12-bit) as expected; the chart's backlight clips at 2 ms.
 
-## Previews (downscaled to 1600 px, auto gain) and 1:1 centre crops
+## Full-resolution frames
 
-| Mode | Preview | 1:1 centre |
+One frame per mode at the sensor's native output size, bilinear-demosaiced, 8-bit sRGB PNG
+(black level subtracted, grey-world white balance on unclipped pixels, auto gain, gamma; the
+`.raw` files on the test machine hold the untouched 10/12-bit data):
+
+| Mode | Size | File |
+|---|---|---|
+| `FULL_RAW10` | 3552×3556 | [FULL_RAW10_full.png](../samples/imx676/FULL_RAW10_full.png) (11.9 MB) |
+| `FULL_RAW12` | 3552×3556 | [FULL_RAW12_full.png](../samples/imx676/FULL_RAW12_full.png) (11.7 MB) |
+| `BIN2_RAW12` | 1776×1778 | [BIN2_RAW12_full.png](../samples/imx676/BIN2_RAW12_full.png) (3.7 MB) |
+| `CROP_3552X2160_RAW10` | 3552×2160 | [CROP_3552X2160_RAW10_full.png](../samples/imx676/CROP_3552X2160_RAW10_full.png) (10.3 MB) |
+| `CROP_1280X720_RAW10` | 1280×720 | [CROP_1280X720_RAW10_full.png](../samples/imx676/CROP_1280X720_RAW10_full.png) (1.3 MB) |
+
+The files are git-lfs objects; `git lfs pull` fetches them. `capture_modes.sh` writes them into
+`<out>/<mode>/full/` on every run.
+
+## Thumbnails (downscaled to 1600 px) and 1:1 centre crops
+
+| Mode | Thumbnail | 1:1 centre |
 |---|---|---|
 | `FULL_RAW10` | ![FULL_RAW10](../samples/imx676/FULL_RAW10_preview.jpg) | [800×800 png](../samples/imx676/FULL_RAW10_center800.png) |
 | `FULL_RAW12` | ![FULL_RAW12](../samples/imx676/FULL_RAW12_preview.jpg) | [800×800 png](../samples/imx676/FULL_RAW12_center800.png) |

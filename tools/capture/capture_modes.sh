@@ -53,6 +53,8 @@ YAML
   raws=("$dir"/*.raw)
   if [[ ${#raws[@]} -gt 0 ]]; then
     "$decoder" "${raws[@]}" --out "$dir" --preview-width 1600 --crop 800 > "$dir/decode.json" || true
+    # Full-resolution 8-bit sRGB PNG of the newest dump (the previews above are downscaled thumbnails).
+    "$decoder" "${raws[-1]}" --out "$dir/full" --preview-width 0 --crop 0 --full-png > "$dir/full_decode.json" || true
   fi
 done
 python3 "$root/tools/capture/catalog.py" "$out" > "$out/catalog.md"
