@@ -125,3 +125,11 @@ change the synthetic image.
 - `--display` renders the RGBA16 frames in a Holoviz window on the machine running the tool; the controls stay on the
   web page (Holoviz's ImGui is private to `libholoscan_viz.so`, so there are no in-window sliders).
 - `cam_player` is the plain multi-camera viewer without controls; `bandwidth_test` is the throughput/CRC tool.
+- GPU memory: the rig allocates 6 CSI blocks and 4 RGBA16 blocks per camera (`CameraChainOptions::csi_pool_blocks` /
+  `bayer_pool_blocks`), 555 MB per camera at 3552×3556. With fewer blocks CsiToBayerOp throws
+  `Too many chunks allocated` as soon as the demosaic stage lags (first frames compile NVRTC kernels) instead of
+  letting the receiver drop frames.
+- `latency` in the stats log and `latency_ms_mean` in `status.json` compare the FPGA's PTP timestamp with the host
+  clock; without a PTP master on the camera link the log prints `n/a (no PTP sync)` and the JSON value stays 0.
+- Exposure defaults: 2 ms / 0 dB suits the backlit chart used for `docs/hardware/imx676_samples.md`; a normally lit
+  room needs about 20 ms / 12 dB. Change them on the page or with `POST /control`.

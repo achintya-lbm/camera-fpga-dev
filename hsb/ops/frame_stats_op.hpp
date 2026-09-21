@@ -30,7 +30,8 @@ struct FrameStatsSnapshot {
   double mean_gbps = 0;
   double last_fps = 0;   // over the last report interval
   double last_gbps = 0;
-  double latency_ms_mean = 0;  // received - sensor timestamp (needs PTP), over the run
+  double latency_ms_mean = 0;   // received - sensor timestamp, over the run; 0 unless latency_samples > 0
+  uint64_t latency_samples = 0;  // frames whose FPGA (PTP) and host clocks agreed to within 10 s
   int64_t first_frame_number = -1;
   int64_t last_frame_number = -1;
 };

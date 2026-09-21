@@ -37,7 +37,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Measure 3.3 V current per camera port; record link stats, PTP offset
 - [x] First light (2026-09-21): the missing step was the vendor's `setup_clock()` (FPGA reg 0x8 ← 0x30, 0x0F) after reset; CAM4 streams every mode at its ceiling over the Linux receiver, 0 drops, CRC clean (`docs/hardware/imx676_samples.md`)
 - [x] Live preview / tuning tool: `apps/cam_tuner` (web page with MJPEG stream, exposure/gain/black-level/test-pattern/fps controls, full-res stills and raw captures; optional Holoviz window) — `docs/tools/cam_tuner.md`
-- [ ] cam_tuner follow-ups: ImGui sliders in the Holoviz window (needs ImGui exported from libholoscan_viz or a separate context), mode switching without restart, auto-exposure helper
+- [x] cam_tuner verified on the real CAM4 at full resolution (2026-09-21): 30 fps, 0 drops, live controls, stills and raw captures over HTTP; GPU pools sized for the pipeline depth (`CameraChainOptions::csi_pool_blocks`/`bayer_pool_blocks`)
+- [ ] cam_tuner follow-ups: ImGui sliders in the Holoviz window (needs ImGui exported from libholoscan_viz or a separate context), mode switching without restart, auto-exposure helper, real latency figures (needs the host PTP master from the Host item above)
 - [ ] RoCE receiver: RDMA writes into GPU memory faulted by the Intel IOMMU (`DMAR ... Present bit in first-level paging entry is clear`, NIC 82:00.0); boot the test machine with `iommu=pt` (or `intel_iommu=off`) and re-test `--receiver roce`
 - [x] Confirm the DA322 data-type filter drops the IMX676 embedded-data line (`leading_lines: 0` decodes correctly in every mode)
 - [ ] Exit: stable video on 4 ports at a low-bandwidth mode; `docs/hardware/imx676_modes.md` written

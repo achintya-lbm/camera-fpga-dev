@@ -5,6 +5,28 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 (late) — cam_tuner on the real CAM4 at full resolution; GPU pool sizing
+
+- First launch on the test machine (`FULL_RAW10`, 30 fps) died after 12 frames: `Too many chunks
+  allocated, memory of size 25261824 not available` from `csi_pool_0`, then `csi_to_bayer_0 ... failed to
+  create out_message`. Cause: both `BlockMemoryPool`s in `CameraRig::BuildChain` had 2 blocks. A block
+  stays referenced while its frame sits in a downstream queue (capacity 1) or is being processed, so the
+  CSI pool that feeds ImageProcessorOp and BayerDemosaicOp needs 4 blocks (and the demosaic pool 2–3);
+  the first frames also wait on the NVRTC compile of those kernels, so the third allocation failed
+  instead of back-pressuring the receiver. The emulator run at 1280×720 passed only by timing.
+  Fix: `CameraChainOptions::{csi_pool_blocks = 6, bayer_pool_blocks = 4}`, logged at start-up
+  (6 × 25.3 MB + 4 × 101 MB = 555 MB of GPU memory per camera at 3552×3556).
+- Relaunch: 30.0 fps, 3.79 Gbps, 0 gaps, 0 drops; ~8.5 preview JPEGs/s at 1280 px (limit 10); full-res
+  still 491 KB; raw capture 15,788,640 B + sidecar; `POST /control` (4 ms/6 dB, then 20 ms/12 dB) took
+  effect within a frame. The 2 ms/0 dB default from the afternoon chart shoot is black in the evening
+  room; 20 ms/12 dB shows the fisheye circle with the chart (focus is soft — lens, not pipeline).
+- FrameStatsOp printed `latency=1790026232643 ms` on hardware: `timestamp_s` is the FPGA's PTP clock,
+  which runs free without a PTP master, while `received_s` is host wall-clock. Latency is now counted only
+  when the two clocks agree to within 10 s; otherwise the log says `n/a (no PTP sync)` and
+  `status.json` reports 0 with `latency_samples = 0`.
+- Operating notes: launch with `nohup bazel-bin/apps/cam_tuner/cam_tuner ... > ~/captures/cam_tuner.log
+  2>&1 &`, stop with `pkill -x cam_tuner` (`pkill -f` also matches the shell that started it).
+
 ## 2026-09-21 (night) — cam_tuner: live preview with exposure/gain controls and still capture
 
 Built with two parallel agents against a contract I wrote first (`hsb/preview/*.hpp`):

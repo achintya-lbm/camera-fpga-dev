@@ -81,7 +81,9 @@ void FrameStatsOp::compute(holoscan::InputContext& op_input, holoscan::OutputCon
 
   const auto now = std::chrono::steady_clock::now();
   double latency_ms = 0;
-  const bool have_latency = timestamp_s > 0 && received_s > 0;
+  // `timestamp_s` is the FPGA's PTP clock. Without a PTP master on the link it runs free (seconds since
+  // power-up), so received - timestamp is only a latency when the two clocks are within a few seconds.
+  const bool have_latency = timestamp_s > 0 && received_s > 0 && received_s - timestamp_s > -10 && received_s - timestamp_s < 10;
   if (have_latency) {
     latency_ms = ((received_s - timestamp_s) * 1e9 + (received_ns - timestamp_ns)) / 1e6;
   }
@@ -140,14 +142,16 @@ void FrameStatsOp::report() {
       stats_.last_gbps = (stats_.bytes - bytes_at_last_report_) * 8.0 / interval / 1e9;
     }
     stats_.latency_ms_mean = latency_samples_ ? latency_sum_ms_ / latency_samples_ : 0;
+    stats_.latency_samples = latency_samples_;
     frames_at_last_report_ = stats_.frames;
     bytes_at_last_report_ = stats_.bytes;
     last_report_time_ = now;
     s = stats_;
   }
-  HOLOSCAN_LOG_INFO("[{}] frames={} fps={:.2f} (mean {:.2f}) {:.3f} Gbps (mean {:.3f}) gaps={} dropped={} short={} crc_bad={}/{} latency={:.2f} ms",
+  const std::string latency = s.latency_samples ? fmt::format("{:.2f} ms", s.latency_ms_mean) : "n/a (no PTP sync)";
+  HOLOSCAN_LOG_INFO("[{}] frames={} fps={:.2f} (mean {:.2f}) {:.3f} Gbps (mean {:.3f}) gaps={} dropped={} short={} crc_bad={}/{} latency={}",
                     s.camera, s.frames, s.last_fps, s.mean_fps, s.last_gbps, s.mean_gbps, s.frame_number_gaps,
-                    s.frames_dropped_reported, s.short_frames, s.crc_mismatches, s.crc_checked, s.latency_ms_mean);
+                    s.frames_dropped_reported, s.short_frames, s.crc_mismatches, s.crc_checked, latency);
 }
 
 FrameStatsSnapshot FrameStatsOp::snapshot() const {
@@ -158,6 +162,7 @@ FrameStatsSnapshot FrameStatsOp::snapshot() const {
   s.mean_fps = elapsed > 0 ? s.frames / elapsed : 0;
   s.mean_gbps = elapsed > 0 ? s.bytes * 8.0 / elapsed / 1e9 : 0;
   s.latency_ms_mean = latency_samples_ ? latency_sum_ms_ / latency_samples_ : 0;
+  s.latency_samples = latency_samples_;
   return s;
 }
 
