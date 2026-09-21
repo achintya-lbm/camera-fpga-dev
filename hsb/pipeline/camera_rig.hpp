@@ -5,6 +5,7 @@
 
 #include <cuda.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +26,14 @@
 
 namespace hsb::pipeline {
 
+struct CameraChain;
+
+// Optional pass-through operator inserted right after the stats stage (before CSI-to-Bayer). It
+// receives the raw CSI frame entities on "input" and must forward them on "output". The chain passed
+// in already has frame_size, sensor and sidecar_json filled in.
+using ChainTapFactory =
+    std::function<std::shared_ptr<holoscan::Operator>(holoscan::Fragment& app, const CameraChain& chain)>;
+
 struct CameraChainOptions {
   bool demosaic = true;       // build the CSI -> RGBA chain (else receive-only)
   bool stats = true;
@@ -35,17 +44,20 @@ struct CameraChainOptions {
   uint32_t dump_limit = 0;
   std::string csv_path;       // per-frame CSV for FrameStatsOp ("" = none)
   std::string tensor_name;    // demosaic output tensor name (default "camK")
+  ChainTapFactory tap_after_stats;  // e.g. a snapshot operator (see apps/cam_tuner)
 };
 
 struct CameraChain {
   unsigned index = 0;
   CameraConfig config;
   size_t frame_size = 0;
+  std::string sidecar_json;  // frame layout description used by dumps (FrameCheckOp, snapshots)
   std::shared_ptr<hsb::imx676::NativeImx676Sensor> sensor;
   std::shared_ptr<holoscan::BooleanCondition> run_condition;
   std::shared_ptr<holoscan::Operator> receiver;
   std::shared_ptr<hsb::ops::FrameStatsOp> stats;
   std::shared_ptr<hsb::ops::FrameCheckOp> check;
+  std::shared_ptr<holoscan::Operator> tap;  // operator created by CameraChainOptions::tap_after_stats
   std::shared_ptr<hololink::operators::CsiToBayerOp> csi_to_bayer;
   std::shared_ptr<hololink::operators::ImageProcessorOp> image_processor;
   std::shared_ptr<holoscan::ops::BayerDemosaicOp> demosaic;
@@ -77,6 +89,10 @@ class CameraRig {
   CUcontext cuda_context() const { return cu_context_; }
   const std::vector<CameraChain>& chains() const { return chains_; }
   const std::string& ibv_name() const { return ibv_name_; }
+  // Per-camera sensor driver (valid after Connect()); index as in config().cameras.
+  std::shared_ptr<hsb::imx676::NativeImx676Sensor> sensor(unsigned camera_index) const;
+  // JSON object describing the CSI frame layout of camera k (mode, geometry, lane rate, timing).
+  std::string FrameSidecarJson(unsigned camera_index, size_t frame_size) const;
 
  private:
   RigConfig config_;

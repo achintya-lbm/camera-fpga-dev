@@ -5,6 +5,23 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-21 (night) — cam_tuner: live preview with exposure/gain controls and still capture
+
+Built with two parallel agents against a contract I wrote first (`hsb/preview/*.hpp`):
+- `hsb/preview`: `PreviewSink` (stream/still hand-off), `JpegEncoderOp` (NPP downscale + nvJPEG on a
+  dedicated stream, rate-limited stream frames, full-resolution stills on request), `SnapshotOp` (raw CSI
+  dump + sidecar on request), `PreviewServer` (POSIX HTTP/1.1: `/`, `/stream.mjpg`, `/snapshot.jpg`,
+  `/still.jpg`, `/status.json`, `POST /control`, `POST /capture`, `/files.json`, `/files/<name>`), the
+  embedded control page, a camera-less `preview_demo`, 3 tests (sink, encoder on GPU, server).
+- `apps/cam_tuner`: rig chain + FormatConverterOp (RGBA16 → RGB8) + encoder + one server per camera;
+  `CameraControls` maps exposure/gain/black level/test pattern/fps to the IMX676 driver with range
+  checks; `--display` adds a Holoviz window (ImGui sliders skipped: `libholoscan_viz.so` hides ImGui).
+  `CameraRig` gained `tap_after_stats`, `sensor(k)`, `FrameSidecarJson()`. Docs: `docs/tools/cam_tuner.md`.
+- Verified on the emulator loopback: status, snapshot (FF D8), control POST reflected in the sensor
+  registers and status, raw capture (+ sidecar decodable by `raw_frame`), still JPEG, files list;
+  720 frames / 24 s, 0 gaps. Holoscan needs an `ArgumentSetter` for `std::shared_ptr<PreviewSink>`
+  (registered in `JpegEncoderOp::setup`); the encoder input uses a pop-oldest queue.
+
 ## 2026-09-21 (evening) — First light on CAM4; every mode catalogued at its ceiling
 
 **Root cause of the silent receivers**: the vendor players call `camera.setup_clock()` after

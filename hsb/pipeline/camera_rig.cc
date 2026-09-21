@@ -175,8 +175,11 @@ CameraChain CameraRig::BuildChain(holoscan::Fragment& app, unsigned k, const Cam
   chain.tail = chain.receiver;
   chain.tail_port = "output";
 
+  chain.sidecar_json = FrameSidecarJson(k, chain.frame_size);
+
   const bool want_dump = !options.dump_dir.empty() && options.dump_limit > 0;
-  const bool downstream_after_stats = options.demosaic || options.check_crc || want_dump;
+  const bool downstream_after_stats =
+      options.demosaic || options.check_crc || want_dump || static_cast<bool>(options.tap_after_stats);
   if (options.stats) {
     chain.stats = app.make_operator<hsb::ops::FrameStatsOp>(
         "stats" + suffix, holoscan::Arg("camera", cam.label()),
@@ -186,15 +189,16 @@ CameraChain CameraRig::BuildChain(holoscan::Fragment& app, unsigned k, const Cam
     app.add_flow(chain.tail, chain.stats, {{chain.tail_port, "input"}});
     chain.tail = chain.stats;
   }
+  if (options.tap_after_stats) {
+    chain.tap = options.tap_after_stats(app, chain);
+    if (chain.tap) {
+      app.add_flow(chain.tail, chain.tap, {{chain.tail_port, "input"}});
+      chain.tail = chain.tap;
+      chain.tail_port = "output";
+    }
+  }
   if (options.check_crc || want_dump) {
-    const auto& timing = sensor->timing();
-    const std::string sidecar = fmt::format(
-        "{{\"mode\": \"{}\", \"width\": {}, \"height\": {}, \"pixel_format\": \"RAW{}\", \"bits\": {}, "
-        "\"line_bytes\": {}, \"start_byte\": {}, \"csi_length\": {}, \"bayer\": \"RGGB\", \"lane_rate_mbps\": {}, "
-        "\"hmax\": {}, \"vmax\": {}, \"fps\": {:.4f}, \"port\": \"{}\"}}",
-        info.name, info.width, info.height, hsb::imx676::BitsPerPixel(info.pixel_format),
-        hsb::imx676::BitsPerPixel(info.pixel_format), chain.frame_size / info.height, 0, chain.frame_size,
-        hsb::imx676::LaneRateMbps(timing.lane_rate), timing.hmax, timing.vmax, timing.fps, cam.port_name);
+    const std::string& sidecar = chain.sidecar_json;
     chain.check = app.make_operator<hsb::ops::FrameCheckOp>(
         "check" + suffix, holoscan::Arg("camera", cam.label()),
         holoscan::Arg("expected_frame_size", static_cast<uint64_t>(chain.frame_size)),
@@ -225,6 +229,26 @@ CameraChain CameraRig::BuildChain(holoscan::Fragment& app, unsigned k, const Cam
   }
   chains_.push_back(chain);
   return chain;
+}
+
+std::shared_ptr<hsb::imx676::NativeImx676Sensor> CameraRig::sensor(unsigned camera_index) const {
+  if (camera_index >= sensors_.size()) throw std::out_of_range("camera index");
+  return sensors_[camera_index];
+}
+
+std::string CameraRig::FrameSidecarJson(unsigned k, size_t frame_size) const {
+  if (k >= sensors_.size()) throw std::out_of_range("camera index");
+  const CameraConfig& cam = config_.cameras[k];
+  const auto& sensor = *sensors_[k];
+  const auto& info = sensor.mode_info();
+  const auto& timing = sensor.timing();
+  return fmt::format(
+      "{{\"mode\": \"{}\", \"width\": {}, \"height\": {}, \"pixel_format\": \"RAW{}\", \"bits\": {}, "
+      "\"line_bytes\": {}, \"start_byte\": {}, \"csi_length\": {}, \"bayer\": \"RGGB\", \"lane_rate_mbps\": {}, "
+      "\"hmax\": {}, \"vmax\": {}, \"fps\": {:.4f}, \"port\": \"{}\"}}",
+      info.name, info.width, info.height, hsb::imx676::BitsPerPixel(info.pixel_format),
+      hsb::imx676::BitsPerPixel(info.pixel_format), frame_size / info.height, 0, frame_size,
+      hsb::imx676::LaneRateMbps(timing.lane_rate), timing.hmax, timing.vmax, timing.fps, cam.port_name);
 }
 
 void CameraRig::StopAll() {

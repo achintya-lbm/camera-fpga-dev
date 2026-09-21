@@ -1,0 +1,24 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# Live preview and tuning: MJPEG stream + controls on an embedded web page, optional Holoviz window.
+# Runs wherever cam_player runs (Mellanox NIC for --receiver roce, docs/machines.md); docs/tools/cam_tuner.md.
+cc_binary(
+    name = "cam_tuner",
+    srcs = ["main.cc"],
+    deps = [
+        "//hsb/board/da322",
+        "//hsb/ops:frame_stats_op",
+        "//hsb/pipeline:camera_rig",
+        "//hsb/pipeline:rig_config",
+        "//hsb/preview",
+        "//hsb/sensors/imx676",
+        "//hsb/sensors/imx676:imx676_mode",
+        "@cli11",
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+        "@holoscan_sdk//:op_format_converter",
+        "@holoscan_sdk//:op_holoviz",
+    ],
+)

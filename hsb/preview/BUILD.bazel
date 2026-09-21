@@ -1,0 +1,96 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Live preview: nvJPEG encoder operator, raw snapshot operator, embedded HTTP/MJPEG control server.
+cc_library(
+    name = "preview",
+    srcs = [
+        "jpeg_encoder.cc",
+        "jpeg_encoder_op.cc",
+        "preview_page.cc",
+        "preview_server.cc",
+        "preview_sink.cc",
+        "snapshot_op.cc",
+    ],
+    hdrs = [
+        "controls.hpp",
+        "jpeg_encoder.hpp",
+        "jpeg_encoder_op.hpp",
+        "preview_page.hpp",
+        "preview_server.hpp",
+        "preview_sink.hpp",
+        "snapshot_op.hpp",
+    ],
+    linkopts = ["-lpthread"],
+    deps = [
+        "@cuda//:cuda_runtime",
+        "@cuda//:npp_headers",
+        "@cuda//:nppc",
+        "@cuda//:nppig",
+        "@cuda//:nppisu",
+        "@cuda//:nvjpeg",
+        "@cuda//:nvjpeg_headers",
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+# Colour bars + moving box; input for the demo and the encoder test.
+cuda_library(
+    name = "synthetic_frame",
+    srcs = ["synthetic_frame.cu"],
+    hdrs = ["synthetic_frame.hpp"],
+)
+
+# Camera-less end-to-end check of the encoder operator and the server: bazel run //hsb/preview:preview_demo
+cc_binary(
+    name = "preview_demo",
+    srcs = ["preview_demo.cc"],
+    deps = [
+        ":preview",
+        ":synthetic_frame",
+        "@cli11",
+        "@cuda//:cuda_runtime",
+        "@fmt",
+        "@holoscan_sdk//:holoscan",
+    ],
+)
+
+cc_test(
+    name = "preview_sink_test",
+    size = "small",
+    srcs = ["preview_sink_test.cc"],
+    deps = [
+        ":preview",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "jpeg_encoder_test",
+    size = "small",
+    srcs = ["jpeg_encoder_test.cc"],
+    tags = [
+        "local",
+        "no-sandbox",
+        "requires-gpu",
+    ],
+    deps = [
+        ":preview",
+        ":synthetic_frame",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "preview_server_test",
+    size = "medium",
+    srcs = ["preview_server_test.cc"],
+    deps = [
+        ":preview",
+        "@googletest//:gtest_main",
+    ],
+)

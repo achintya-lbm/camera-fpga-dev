@@ -26,6 +26,21 @@ bazel run //apps/hello_holoscan
 `bazel run //:buildifier` formats BUILD files; `bazel run //:refresh_compile_commands` generates
 `compile_commands.json` for clangd. Per-machine overrides go in `user.bazelrc` (git-ignored).
 
+## Running the camera stack
+
+The apps take a rig YAML from `configs/` and run on the machine with the DA322 link (`docs/machines.md`):
+`apps/cam_player` (multi-camera Holoviz viewer), `apps/bandwidth_test` (throughput, CRC, raw dumps),
+`hsb/cli/hsbctl` (board and sensor plumbing) and `apps/cam_tuner`, the live preview and tuning tool: it
+streams the demosaiced image to an embedded web page where exposure, gain, black level and test pattern can be
+changed while watching, and captures full-resolution stills or raw CSI frames on request
+(`docs/tools/cam_tuner.md`).
+
+```bash
+bazel build //apps/cam_tuner
+bazel-bin/apps/cam_tuner/cam_tuner --config configs/da322_1cam.yaml --port J1D --mode FULL_RAW10 \
+    --fps 30 --exposure-ms 2 --receiver linux      # then open http://<test machine>:8080/
+```
+
 ## Layout
 
 See `DESIGN.md` §10. Short version: `hsb/` host libraries (board, sensors, pipeline, encode, ops, CLI),
