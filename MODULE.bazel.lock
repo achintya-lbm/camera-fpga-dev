@@ -577,7 +577,7 @@
   "moduleExtensions": {
     "//tools/workspace:default.bzl%camera_fpga_dev_repositories": {
       "general": {
-        "bzlTransitiveDigest": "z1B+tOHYq6XbvlNWbzUa/6Q4H2iM2xcrPaXN10HJpdM=",
+        "bzlTransitiveDigest": "8u2Dq0NyX8uTI1/0SsgWLUhGrhpsokQkBXHHSJkR1tc=",
         "usagesDigest": "+xLuTlbOpdT/T3i58oTtBwPUU6aSra9dTZWBBXQqPac=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
@@ -667,6 +667,17 @@
               "patches": [
                 "@@//tools/workspace/imgui/patches:0001-holoscan-imconfig-thread-local-context.patch"
               ]
+            }
+          },
+          "jxs_reference": {
+            "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
+            "attributes": {
+              "urls": [
+                "https://standards.iso.org/iso-iec/21122/-5/ed-3/en/ISO_IEC_21122-5_ED-3.zip"
+              ],
+              "sha256": "36efc26b92a09b7447bc6e580c902d5c19ee9e919b324609768e390d38621835",
+              "type": "zip",
+              "build_file": "@@//tools/workspace/jxs_reference:package.BUILD.bazel"
             }
           },
           "magic_enum": {
