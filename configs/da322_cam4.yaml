@@ -1,0 +1,19 @@
+# CAM4 (J1D) alone over GPUDirect RDMA: the NIC writes each frame straight into GPU memory.
+# Needs the host IOMMU in passthrough (iommu=pt), see docs/bringup/host_setup.md §2b.
+hololink_ip: 192.168.0.2
+receiver: roce          # roce | linux
+ibv_name: ""            # empty = first InfiniBand device (see docs/machines.md)
+ibv_port: 1
+cuda_device: 0
+lane_rate_limit_mbps: 1500
+report_interval_s: 2.0
+p22:
+  enabled: true
+  expander_address: 0x20
+cameras:
+  - port: J1D
+    mode: FULL_RAW10    # FULL_RAW10 | FULL_RAW12 | BIN2_RAW12 | CROP_3552X2160_RAW10 | CROP_1280X720_RAW10
+    fps: 30
+    lanes: 4
+    exposure_ms: 20
+    gain_db: 12
