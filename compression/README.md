@@ -6,7 +6,7 @@ cameras fit the 10G link. Design and parameter set: `DESIGN.md` §17; milestones
 | Path | Content |
 |---|---|
 | `docs/jpegxs_part1_notes.md` | Implementation notes on ISO/IEC 21122-1:2024 (clause-cited): codestream syntax, decoding process, band/precinct geometry, Star-Tetrix for Bayer, latency/parallelism, errata, worked IMX676 parameters |
-| `docs/jpegxs_landscape.md` | Software/FPGA implementations, oracle choice, conformance material |
+| `docs/jpegxs_landscape.md` | Software/FPGA implementations, oracle choice (ISO 21122-5 `libjxs` + 21122-4 vectors + SVT-JPEG-XS), commercial IP, patents, numbers for raw Bayer |
 | `jxs/` | Bit-exact C++17 reference codec (golden model for the CUDA decoder and the RTL) — M7.1 |
 | `cuda/`, `ops/` | `JpegXsDecodeOp`: CUDA decoder as a Holoscan operator replacing `CsiToBayerOp` — M7.3 |
 | `tools/` | `jxs_encode`, `jxs_decode`, `jxs_compare`, compression-study scripts — M7.1/M7.2 |

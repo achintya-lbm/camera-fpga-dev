@@ -91,10 +91,10 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 
 ## M7 — JPEG XS compression (design: DESIGN.md §17; notes: compression/docs/)
 - [x] Spec study of ISO/IEC 21122-1:2024 → `compression/docs/jpegxs_part1_notes.md` (2026-09-22)
-- [ ] Implementation landscape / oracle choice → `compression/docs/jpegxs_landscape.md`
+- [x] Implementation landscape / oracle choice → `compression/docs/jpegxs_landscape.md` (2026-09-22): ISO 21122-5 `libjxs` primary oracle (only open Bayer-profile encoder), ISO 21122-4 conformance streams 210–216, SVT-JPEG-XS as second decoder
 - [ ] Obtain ISO/IEC 21122-2 (profiles/levels, Bayer constraints) and 21122-4 (conformance) — user
 - [ ] M7.1 Reference codec `compression/jxs` (C++17, bit-exact): codestream parser + geometry (Annex A/B), entropy decoder (Annex C), dequant/IDWT/Star-Tetrix/output (D–G), then encoder with CBR `(Q,R)` search; CLIs `jxs_encode`/`jxs_decode`/`jxs_compare`; lossless round-trip tests on synthetic images and captured frames
-- [ ] M7.1b External oracle built from source under `tools/workspace/`; interop tests both directions (lossless first, then lossy)
+- [ ] M7.1b Oracles: `tools/workspace/jxs_reference` (ISO 21122-5 `libjxs`, fetched from standards.iso.org, evaluation licence, never shipped) and SVT-JPEG-XS; fetch ISO 21122-4 Bayer streams 210–216 by HTTP range requests into an untracked test-data dir; interop tests both directions (lossless first, then lossy); check our 17.2 parameters against libjxs's Bayer profile limits
 - [ ] M7.2 Compression study on CAM4 captures (RAW10/RAW12, Star-Tetrix vs none, 2–6 bit/pixel): ratio vs PSNR/max error → pick the CBR budget; record in `docs/bandwidth.md` and DESIGN §17.1
 - [ ] M7.3 `JpegXsDecodeOp` (CUDA) bit-exact vs the reference decoder, ≤ 10 ms per full frame; `CameraRig` selects it via `compression: jpegxs`; emulator serves pre-encoded frames; `bandwidth_test` + preview end to end without FPGA
 - [ ] M7.4 FPGA encoder (after M6): architecture + CertusPro-NX resource/timing estimate, RTL under `fpga/rtl/jpegxs/`, cocotb vs the reference encoder, integration after the DT filter; frame = codestream with TLAST at EOC (DESIGN §17.4)

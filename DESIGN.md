@@ -637,7 +637,7 @@ result checkable. Targets:
 
 | Target | Value | Consequence |
 |---|---|---|
-| Ratio | 3:1 nominal (4 bit/sensor pixel from RAW12), 4:1 stretch (*study*) | 4 cameras `FULL_RAW12` @ 32.6 fps = 6.6 Gbit/s (3:1) or 4.9 Gbit/s (4:1) |
+| Ratio | 3:1 nominal (4 bit/sensor pixel from RAW12), 4:1 stretch (*study*); the JPEG committee reports 6:1–12:1 visually lossless on raw Bayer and ≈ 2.5:1 lossless, so headroom exists | 4 cameras `FULL_RAW12` @ 32.6 fps = 6.6 Gbit/s (3:1) or 4.9 Gbit/s (4:1) |
 | Quality | visually lossless on our scenes; PSNR and per-channel error measured on real captures (*study*) | M7.2 decides bpp |
 | Latency | line-based: one precinct (8 sensor rows) plus DWT/Star-Tetrix context in the encoder; sub-frame in the decoder | no frame buffer in the FPGA; no TDC (Annex H) |
 | Bit depths | RAW10 and RAW12 (B = 10/12); lossless mode (Fq = 0, Bw = B) for validation only | one code path, parameters differ |
@@ -695,9 +695,16 @@ CSI-2 RX → unpack → DT filter → [JPEG XS encoder] → HSB IP → 10G ─�
   the spec, slow but simple. It is the golden model for the CUDA decoder (identical output on every test
   stream) and for the RTL (cocotb compares against it), generates test streams, and hosts the rate-control
   experiments. CLI: `jxs_encode`, `jxs_decode`, `jxs_compare` (PSNR / max error per component).
-- **External oracle**: an independent JPEG XS implementation built from source under
-  `tools/workspace/` so that our streams decode there and theirs decode here (both directions, lossless
-  and lossy). Candidate and constraints (Bayer support, edition) in `compression/docs/jpegxs_landscape.md`.
+- **External oracles** (`compression/docs/jpegxs_landscape.md` §5): the ISO/IEC 21122-5 ed. 3
+  reference software `libjxs` is the primary one — the only open encoder *and* decoder for the Bayer
+  profiles (Star-Tetrix full/in-line, `Sd`, NLTs); its licence allows evaluation and conformance testing
+  only, so it is built from the ISO download under `tools/workspace/jxs_reference/` and never ships.
+  Fixed vectors come from the ISO/IEC 21122-4 ed. 3 conformance package (streams 210–216 are Bayer,
+  fetched by HTTP range requests from the 1.85 GB archive and kept out of git). SVT-JPEG-XS
+  (BSD-2-Clause-Patent, SIMD) is the fast second decoder — it decodes `Cpih = 3` but cannot encode
+  Bayer profiles — and the encoder for any RGB/YUV experiment. Every conformant stream must decode
+  identically in `libjxs`, SVT and our decoders; byte-identical *encodings* are not expected (rate
+  allocation is not normative).
 - **FPGA encoder** (`fpga/rtl/jpegxs/`, after M6): line-based pipeline as drawn; the `(Q, R)` search is
   a size estimation from the bitplane counts (the syntax makes the packet sizes computable without
   emitting bits), so the encoder buffers exactly one precinct plus context. Resource and timing estimate
@@ -732,7 +739,16 @@ granularity of the RoCE path and the MTU maths are untouched.
   `Sd`) and 21122-4 (conformance streams, decoder error bounds) before freezing 17.2 — user action.
 - Spec ambiguities to settle against reference behaviour (notes §8.1): band index of non-decomposed
   components, line-index convention, significance flag polarity.
-- FPGA feasibility for 4 encoders vs 1 shared time-multiplexed encoder per pair of cameras.
+- FPGA feasibility for 4 encoders vs 1 shared time-multiplexed encoder per pair of cameras. The only
+  public footprints (IHSE/Fraunhofer, non-Bayer 4K60 High 444.12) are ≈ 23k ALM / 82 DSP / 380 M20K on a
+  Cyclone 10 GX — one instance is plausible on an LFCPNX-100 (96k LC, 3.7 Mb EBR), four are not.
+- Buy vs build: intoPIX TicoXS is the one JPEG XS core announced for Lattice CertusPro-NX (Main/High/MLS
+  profiles; a Bayer-profile variant is unverified). Ask intoPIX before committing to own RTL.
+- Patents: shipped JPEG XS encoder/decoder instances (FPGA or CUDA) fall under the Vectis patent pool
+  (per-instance royalties); SVT's BSD+Patent grant does not cover the pool. Business decision before M7.5.
+- Part 2 constraints without the Part 2 PDF: `libjxs` encodes the LightBayer/MainBayer/HighBayer profile
+  limits in its source (`profile=MainBayer;cfa=RGGB;cpih=tetrix`), so the parameter set in 17.2 can be
+  checked against it now; the PDF still settles level/sublevel choices.
 
 ---
 

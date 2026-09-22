@@ -1,0 +1,49 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Bit-exact JPEG XS (ISO/IEC 21122-1:2024) reference codec, written from the standard
+# (compression/docs/jpegxs_part1_notes.md). Golden model for the CUDA decoder and the FPGA encoder.
+
+cc_library(
+    name = "bitio",
+    hdrs = ["bitio.hpp"],
+)
+
+# Annex A marker segments, Annex C precinct/packet headers, Annex B band/precinct/packet geometry.
+cc_library(
+    name = "codestream",
+    srcs = [
+        "geometry.cc",
+        "headers.cc",
+    ],
+    hdrs = [
+        "geometry.hpp",
+        "headers.hpp",
+    ],
+    deps = [
+        ":bitio",
+        "@fmt",
+    ],
+)
+
+cc_test(
+    name = "headers_test",
+    size = "small",
+    srcs = ["headers_test.cc"],
+    deps = [
+        ":bitio",
+        ":codestream",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "geometry_test",
+    size = "small",
+    srcs = ["geometry_test.cc"],
+    deps = [
+        ":codestream",
+        "@googletest//:gtest_main",
+    ],
+)

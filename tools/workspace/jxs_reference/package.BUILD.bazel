@@ -1,0 +1,61 @@
+# -*- mode: bazel -*-
+# ISO/IEC 21122-5 reference software: libjxs (encoder + decoder, all profiles incl. Bayer) and the
+# jxs_encoder / jxs_decoder command-line tools. Mirrors the archive's CMakeLists. Evaluation and
+# conformance-testing licence only (see tools/workspace/jxs_reference/repository.bzl).
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "libjxs",
+    srcs = glob([
+        "libjxs/src/*.c",
+        "libjxs/src/*.h",
+    ]),
+    hdrs = ["libjxs/public/libjxs.h"],
+    copts = ["-w"],
+    defines = ["CONFORMANCE_ENABLE_GENERATE_CSV_CODE=1"],
+    includes = [
+        "libjxs/public",
+        "libjxs/src",
+    ],
+    linkopts = ["-lm"],
+)
+
+cc_library(
+    name = "jxs_utils",
+    srcs = glob(
+        [
+            "programs/*.c",
+            "programs/*.h",
+            "programs/converters/*.c",
+            "programs/converters/*.h",
+            "std/*.h",
+        ],
+        exclude = [
+            "programs/xs_enc_main.c",
+            "programs/xs_dec_main.c",
+        ],
+    ),
+    copts = ["-w"],
+    includes = [
+        "programs",
+        "programs/converters",
+        "std",
+    ],
+    deps = [":libjxs"],
+)
+
+cc_binary(
+    name = "jxs_encoder",
+    srcs = ["programs/xs_enc_main.c"],
+    copts = ["-w"],
+    deps = [":jxs_utils"],
+)
+
+cc_binary(
+    name = "jxs_decoder",
+    srcs = ["programs/xs_dec_main.c"],
+    copts = ["-w"],
+    deps = [":jxs_utils"],
+)
