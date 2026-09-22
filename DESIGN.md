@@ -647,10 +647,10 @@ result checkable. Targets:
 
 Bayer data is coded as a **four-component image on the super-pixel grid** (notes §5): `Wf × Hf =
 1776 × 1778`, `Nc = 4`, component order R, G1, G2, B with the physical RGGB phase in the CRG marker
-(`Ct = 0`). Decorrelation with **Star-Tetrix** (`Cpih = 3`, CTS `Cf = 0`, `e1 = e2 = 2` to start): an
-integer-reversible lifting over the four planes producing Ya, Cb, Cr, Δ. `Cf = 0` needs one super-pixel
-row of context above and below (≈ 11 KB for the encoder) and is worth it over the in-line `Cf = 3`
-variant, which degrades the vertical steps.
+(`Ct = 0`). Decorrelation with **Star-Tetrix** (`Cpih = 3`, CTS `Cf = 0`, `e1 = e2 = 0` — measured best; `e = 2`
+costs 1.9 dB): an integer-reversible lifting over the four planes producing Ya, Cb, Cr, Δ. `Cf = 0`
+needs one super-pixel row of context above and below (≈ 11 KB for the encoder); the in-line `Cf = 3`
+variant measured only 0.25 dB worse (`compression/docs/compression_study.md`), so the FPGA may use it.
 
 | Parameter | Value | Why |
 |---|---|---|
@@ -662,7 +662,7 @@ variant, which degrades the vertical steps.
 | `Hsl` | 8 precinct rows (32 sensor rows), as the reference encoder chooses for MainBayer | resync + slice-parallel decode; DWT still spans slices |
 | Vertical prediction | allowed inside slices, never in a slice's first row | C.6.3; the encoder may disable it for decoder parallelism |
 | Weights `G[b], P[b]` | Table I.10 (5h/1v) / I.11 (5h/2v), `Cf = 0` columns | Annex I |
-| `Rl, Fs, Rm`, `Qpih` | reference encoder uses `Rl = 1`, `Lh = 1`, `Rm = 1`, uniform quantiser; we start from the same choices and revisit `Rl`/`Lh` (they cost header bytes but simplify the FPGA's raw-mode fallback) | `jxs_info` on the reference stream |
+| `Rl, Fs, Rm`, `Qpih` | reference encoder uses `Rl = 1`, `Lh = 1`, `Rm = 1`, uniform quantiser (measured 1.2 dB better than dead-zone); we start from the same choices and revisit `Rl`/`Lh` (they cost header bytes but simplify the FPGA's raw-mode fallback) | `jxs_info` on the reference stream; study |
 | Rate control | CBR per frame: fixed byte budget per precinct row (or slice), `(Q, R)` search on the bitplane counts, `Lcod` in the PIH | HSB needs a bounded frame; notes §7.4 |
 | TDC, NLT | off | Annex H needs a frame buffer; sensor data is linear |
 

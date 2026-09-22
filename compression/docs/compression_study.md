@@ -45,6 +45,20 @@ weights; errors in 12-bit LSB (peak 4095):
 In 10-bit-equivalent units the 12-bit results match the 10-bit ones (3 bpp: max error 9/4095 ≈
 2.2/1023): the codec spends the same bits per pixel and the extra source bits are noise.
 
+### Encoder options on the 12-bit frame (MainBayer, 3 bpp unless noted)
+
+| Variant | PSNR | max err | Δ vs baseline |
+|---|---|---|---|
+| baseline: Star-Tetrix `Cf = 0`, `e1 = e2 = 0`, uniform quantiser (Table I.10 weights) | 70.10 dB | 9 | — |
+| `Cf = 3` in-line Star-Tetrix (no line context; Table I.10 `Cf = 3` weights) | 69.85 dB | 10 | −0.25 dB |
+| `Cf = 3` at 2 bpp (vs 65.61 dB) | 65.45 dB | 17 | −0.16 dB |
+| `e1 = e2 = 1` | 70.06 dB | 9 | −0.04 dB |
+| `e1 = e2 = 2` | 68.20 dB | 13 | −1.90 dB |
+| dead-zone quantiser (`Qpih = 0`) | 68.88 dB | 11 | −1.22 dB |
+
+Take-aways for the FPGA encoder: the in-line transform (`Cf = 3`, no super-pixel-row buffer) costs a
+quarter of a dB — affordable; keep `e1 = e2 = 0`; use the uniform quantiser.
+
 ## Visual check
 
 Side-by-side crops of the most detailed 600×600-sensor-pixel region of each frame (nearest-neighbour
