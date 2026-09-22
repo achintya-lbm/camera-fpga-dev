@@ -5,6 +5,23 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-22 — GPUDirect receive works with `iommu=pt`; scope narrowed to CAM4 until compression
+
+- User rebooted the test machine with `iommu=pt`: NIC and GPU IOMMU groups now `identity` (were `DMA-FQ`).
+  `bandwidth_test --config configs/da322_cam4.yaml` (J1D, RoCE, CRC on every frame, 30 s each):
+  `FULL_RAW10` 30 fps 3.787 Gbps 897/897 CRC OK; `FULL_RAW12` 32.57 fps 4.937 Gbps 975/975;
+  `CROP_1280X720_RAW10` 149.27 fps 1.376 Gbps 4473/4473; 0 gaps, 0 drops, 0 DMAR faults. The receiver
+  process holds one `dmabuf` fd and `nvidia-peermem` is not loaded → the `cuMemAlloc` + `ibv_reg_dmabuf_mr`
+  GPUDirect path is the active one. RDMA device is `rocep130s0f0`.
+- Why passthrough was needed (user question): GPUDirect RDMA needs identical physical addresses across PCIe
+  devices; the NIC's writes targeted the GPU BAR1 window (0xa0_0000_0000, 128 GB) which the NIC's IOMMU
+  domain did not map, so the IOMMU dropped every page while the NIC still completed. Recorded in
+  `docs/bringup/host_setup.md` §2b and DESIGN.md §4.5.
+- `cam_tuner` now runs over RoCE (`--config configs/da322_cam4.yaml`), 30 fps, stream clean.
+- Decision (user): one camera (CAM4) only; multi-camera rows wait until JPEG XS compression works.
+  Next: JPEG XS (ISO/IEC 21122-1:2024, spec PDF in the user's Downloads) — spec study and implementation
+  landscape survey started with two agents; design to follow in DESIGN.md §17 / `compression/`.
+
 ## 2026-09-21 (later) — cam_tuner flicker: black preview frames from an unsynchronised CUDA stream
 
 - User report: the live feed flickers. Probing `/stream.mjpg` from the dev box for 4 s (36 parts) showed

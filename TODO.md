@@ -39,7 +39,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [x] Live preview / tuning tool: `apps/cam_tuner` (web page with MJPEG stream, exposure/gain/black-level/test-pattern/fps controls, full-res stills and raw captures; optional Holoviz window) — `docs/tools/cam_tuner.md`
 - [x] cam_tuner verified on the real CAM4 at full resolution (2026-09-21): 30 fps, 0 drops, live controls, stills and raw captures over HTTP; GPU pools sized for the pipeline depth (`CameraChainOptions::csi_pool_blocks`/`bayer_pool_blocks`)
 - [ ] cam_tuner follow-ups: ImGui sliders in the Holoviz window (needs ImGui exported from libholoscan_viz or a separate context), mode switching without restart, auto-exposure helper, real latency figures (needs the host PTP master from the Host item above)
-- [ ] RoCE receiver: RDMA writes into GPU memory faulted by the Intel IOMMU (`DMAR ... Present bit in first-level paging entry is clear`, NIC 82:00.0); boot the test machine with `iommu=pt` (or `intel_iommu=off`) and re-test `--receiver roce`
+- [x] RoCE receiver: RDMA writes into GPU memory faulted by the Intel IOMMU (`DMAR ... Present bit in first-level paging entry is clear`, NIC 82:00.0); fixed by booting the test machine with `iommu=pt` (2026-09-22) — `bandwidth_test --receiver roce` CRC-clean at every mode ceiling, 0 faults
 - [x] Confirm the DA322 data-type filter drops the IMX676 embedded-data line (`leading_lines: 0` decodes correctly in every mode)
 - [ ] Exit: stable video on 4 ports at a low-bandwidth mode; `docs/hardware/imx676_modes.md` written
 
@@ -53,7 +53,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [x] `apps/cam_player` (YAML config, `--receiver roce|linux`, N cameras → one Holoviz window in a grid; headless run verified on the emulator)
 - [x] `apps/bandwidth_test` (receive-only, warm-up window, per-camera PASS/FAIL, CSV + JSON summary)
 - [x] `apps/emu_source` + `tools/emulator/loopback.sh`: HSB emulator posing as a DA322 with emulated IMX676/TCA6408 peripherals; 2-camera loopback at 30 fps passes with 0 gaps
-- [ ] Exit: Bazel-built `cam_player` shows 1 and 4 cameras via RoCE on the test machine; bandwidth CSV produced (needs M1 hardware bring-up first)
+- [~] Exit: 1 camera via RoCE done (2026-09-22: `bandwidth_test` and `cam_tuner` on CAM4 over GPUDirect, `configs/da322_cam4.yaml`); 4 cameras deferred until JPEG XS compression works (decision 2026-09-22)
 
 ## M3 — GPU encode path (NVENC AV1)
 - [ ] `hsb/ops/rgba16_to_p010` CUDA kernel (RGBA16 → P010/NV12, BT.709 limited) + CPU-reference test
@@ -64,10 +64,10 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Optional: fused bayer→P010 kernel; HEVC Main10 fallback
 
 ## M4 — 10G saturation matrix (test machine)
-- [ ] Rows A1, A2, B1, B2, C1, C2, C3 on RoCE, ≥60 s each, MTU 1500 (bandwidth_test and cam_encode)
+- [~] Rows A1, A2 on RoCE done at 30 s (2026-09-22, `docs/bandwidth.md`); B1, B2, C1, C2, C3 wait for multi-camera (after M7); ≥60 s runs and cam_encode still open
 - [ ] Same rows on the Linux receiver (informational)
 - [ ] MTU 4096 repeat if the vendor bitstream supports it
-- [ ] Confirm the GPUDirect (GPU VRAM, DMA-BUF) receive path is active; record the active path per machine in `docs/machines.md`
+- [x] Confirm the GPUDirect (GPU VRAM, DMA-BUF) receive path is active (receiver holds a `dmabuf` fd, no `nvidia-peermem`); recorded in `docs/machines.md` (2026-09-22)
 - [ ] Results + plots in `docs/bandwidth.md`
 
 ## M5 — 1G link test

@@ -39,5 +39,15 @@ by the host IOMMU, see host_setup §2b), one camera on J1D, 12 s per mode, CSVs 
 | — | `CROP_3552X2160_RAW10` | 52.97 | 4.064 Gbps | PASS |
 | — | `CROP_1280X720_RAW10` | 149.23 | 1.375 Gbps | PASS |
 
+2026-09-22, test machine booted with `iommu=pt`, DA322 v2511, hololink 6930609 + Tauro patch, **RoCE
+receiver, GPUDirect (cuMemAlloc + DMA-BUF)**, one camera on J1D (`configs/da322_cam4.yaml`), 30 s per
+mode, CRC checked on every frame, 0 DMAR faults, summaries `/tmp/bw_cam4_roce*.json` on the test machine:
+
+| Row | Mode | fps | Measured | Result |
+|---|---|---|---|---|
+| A1 (30 fps) | `FULL_RAW10` | 29.98 | 3.787 Gbps, 897 frames, 0 gaps/drops, CRC 897/897 | PASS |
+| A2 | `FULL_RAW12` | 32.57 | 4.937 Gbps, 975 frames, 0 gaps/drops, CRC 975/975 | PASS |
+| — | `CROP_1280X720_RAW10` | 149.27 | 1.376 Gbps, 4473 frames, 0 gaps/drops, CRC 4473/4473 | PASS |
+
 Record for later rows: date, machine, bitstream version, hololink commit, receiver memory path
 (GPU VRAM / pinned host), CSV path.

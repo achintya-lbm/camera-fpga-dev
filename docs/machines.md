@@ -67,9 +67,12 @@ Inventory taken 2026-09-21 over SSH:
   (`ibv_devinfo`), `linuxptp`. `libibverbs-dev` is not needed (headers from `tools/workspace/rdma_core`).
 - `sudo` needs a password (user is in the `sudo` group): package installs, netplan and sysctl changes
   are run by hand from `tools/host/`.
-- Kernel command line has no IOMMU option (Intel DMAR active, 29 IOMMU groups): RoCE writes into GPU
-  memory fault (`docs/bringup/host_setup.md` §2b) until `iommu=pt` is added. NIC↔GPU topology: `NODE`
-  (same NUMA node, different PCIe host bridges).
+- Kernel command line carries `iommu=pt` since 2026-09-22 (NIC and GPU IOMMU groups report `identity`);
+  before that the default translating mode faulted every RoCE write into GPU memory
+  (`docs/bringup/host_setup.md` §2b). GPUDirect receive path active: `cuMemAlloc` + DMA-BUF
+  (`ibv_reg_dmabuf_mr`), no `nvidia-peermem` loaded. RDMA device name `rocep130s0f0` (netdev-style naming;
+  hololink picks it as the first device when `ibv_name` is empty). NIC↔GPU topology: `NODE` (same NUMA
+  node, different PCIe host bridges).
 - Attached: DA322 (`192.168.0.2`) with 4× FSM:GO IMX676 on FPA-A/P22 adapters (CAM4 = J1D for the
   first-light captures)
 - Checkout: `~/robotics/camera-fpga-dev` (rsync from the dev box until the repo is pushed); Bazel

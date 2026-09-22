@@ -47,7 +47,22 @@ sudo update-grub && sudo reboot
 cat /proc/cmdline   # must show iommu=pt
 ```
 
-The Linux (UDP) receiver is unaffected and sustained 4.95 Gbps with 0 drops on the test machine.
+Why: the RoCE receiver is GPUDirect RDMA — the NIC DMA-writes each frame into the GPU's PCIe BAR1
+window. GPUDirect RDMA requires all PCIe devices to see the same physical addresses (NVIDIA GPUDirect RDMA
+guide, "Supported Systems"), so the IOMMU must be off or 1:1. Ubuntu kernels enable VT-d by default
+(`CONFIG_INTEL_IOMMU_DEFAULT_ON=y`, lazy DMA domains), which puts the NIC in a translating domain with no
+mapping for the GPU BAR; the faulting addresses in the log are inside the GPU's BAR1 range. `iommu=pt`
+keeps VT-d (interrupt remapping, VFIO) and gives host-owned devices identity domains. Verify after the
+reboot:
+
+```bash
+cat /sys/bus/pci/devices/<nic bdf>/iommu_group/type   # identity (was DMA-FQ)
+ls -l /proc/$(pgrep -x bandwidth_test)/fd | grep -c dmabuf   # 1 while a RoCE receiver runs
+journalctl -k | grep -c DMAR                          # no new faults
+```
+
+Result on the test machine (2026-09-22): CRC-clean at every mode ceiling, `docs/bandwidth.md`. The Linux
+(UDP) receiver is unaffected by the IOMMU and sustained 4.95 Gbps with 0 drops.
 
 ## 3. PTP (host is the grandmaster)
 

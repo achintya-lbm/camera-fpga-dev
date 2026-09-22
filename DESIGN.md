@@ -1,6 +1,6 @@
 # DESIGN — Holoscan Sensor Bridge camera ingest on the Tauro DA322 with 4× FRAMOS FSM:GO IMX676
 
-Status: **First light on the DA322 (2026-09-21): IMX676 on CAM4 streams every catalogue mode at its ceiling over the Linux receiver, samples in `docs/hardware/imx676_samples.md`; RoCE receive blocked by the host IOMMU (M4)**.
+Status: **GPUDirect RDMA receive working (2026-09-22): with `iommu=pt` on the host the RoCE receiver lands CAM4 frames straight in GPU memory, CRC-clean at every mode ceiling (4.94 Gbps for `FULL_RAW12`); first light and per-mode samples from 2026-09-21 in `docs/hardware/imx676_samples.md`. Scope decision 2026-09-22: stay on one camera (CAM4) until JPEG XS compression (M7) works, then return to multi-camera (M4/B/C rows)**.
 Companion files: `TODO.md` (milestone checklists), `WORKING.md` (dated lab notebook),
 `docs/hardware/da322.md` (pin tables transcribed from the DA322 manual v1.6), `docs/machines.md`
 (the only place that records which computers we use and what they contain).
@@ -217,17 +217,24 @@ hololink's `ReceiverMemoryDescriptor` first tries GPU memory exported as DMA-BUF
 `cuMemGetHandleForAddressRange`) so the NIC RDMA-writes straight into GPU VRAM (GPUDirect RDMA; needs a
 workstation/datacenter-class GPU and the open kernel modules). If that fails it falls back to
 `cuMemHostAlloc(CU_MEMHOSTALLOC_DEVICEMAP)` pinned host memory plus one `cuMemcpyHtoDAsync` per frame
-(≈ 16 MB at 40 fps ≈ 0.6 GB/s, negligible). The build enables the GPU-VRAM path
-(`HOLOLINK_ROCE_USE_GPU_VRAM=ON`, exposed as a Bazel setting); `bandwidth_test` prints which path is
-active, and the result per machine is recorded in `docs/machines.md`.
+(≈ 16 MB at 40 fps ≈ 0.6 GB/s, negligible) — but only on integrated GPUs: hololink 2.5.0-PB6's
+`RoceReceiver` always allocates the frame buffer with `cuMemAlloc` on a discrete GPU and registers it
+with `ibv_reg_dmabuf_mr` (falling back to `ibv_reg_mr_iova`, which needs `nvidia-peermem`). There is no
+host-memory RoCE path on a dGPU host; the Linux (UDP) receiver is the copy-based alternative. The active
+path per machine is recorded in `docs/machines.md` (check: the receiver process holds one `dmabuf` fd).
 
 ---
 
-**Test-machine status (2026-09-21):** the RoCE receiver's RDMA writes into GPU memory are blocked by
-the Intel IOMMU (`DMAR: [DMA Write NO_PASID] Request device [<NIC>] fault ... Present bit in first-level
-paging entry is clear`): completions arrive at the frame rate but the buffers stay zero. The Linux
-(UDP) receiver works and sustained 4.95 Gbps (FULL_RAW12 @ 32.6 fps, 0 drops) on the 20-core PREEMPT_RT
-host. Fix candidates for M4: boot with `iommu=pt` (or `intel_iommu=off`), see `docs/bringup/host_setup.md`.
+**Test-machine status (2026-09-22):** GPUDirect receive works once the host boots with `iommu=pt`.
+GPUDirect RDMA needs every PCIe device to see the same physical addresses (NVIDIA GPUDirect RDMA guide,
+"Supported Systems"): the NIC DMA-writes into the GPU's BAR1 window, and with the Intel IOMMU in its
+default translating mode the NIC's domain has no mapping for those addresses, so every 4 KB write faulted
+(`DMAR: [DMA Write NO_PASID] Request device [<NIC>] fault addr <inside GPU BAR1> ... Present bit in
+first-level paging entry is clear`) while the NIC still signalled completions — frames arrived at the right
+rate with all-zero contents. Passthrough keeps VT-d (interrupt remapping, VFIO) but gives host-owned devices
+identity domains. Measured over RoCE, CRC on every frame, 0 drops, 0 DMAR faults: `FULL_RAW10` 30 fps
+3.79 Gbps, `FULL_RAW12` 32.6 fps 4.94 Gbps, `CROP_1280X720_RAW10` 149 fps 1.38 Gbps (`docs/bandwidth.md`).
+The Linux (UDP) receiver remains the fallback that needs no boot option (4.95 Gbps, 0 drops).
 
 ## 5. Software stack and version pins
 
