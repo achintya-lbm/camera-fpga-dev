@@ -21,3 +21,6 @@ __pycache__/
 *.ivf
 *.obu
 *.h265
+
+# ISO/IEC 21122-4 conformance vectors and other licensed test data (fetched, never committed)
+compression/testdata/
