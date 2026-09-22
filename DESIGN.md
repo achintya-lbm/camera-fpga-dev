@@ -746,9 +746,14 @@ granularity of the RoCE path and the MTU maths are untouched.
   profiles; a Bayer-profile variant is unverified). Ask intoPIX before committing to own RTL.
 - Patents: shipped JPEG XS encoder/decoder instances (FPGA or CUDA) fall under the Vectis patent pool
   (per-instance royalties); SVT's BSD+Patent grant does not cover the pool. Business decision before M7.5.
-- Part 2 constraints without the Part 2 PDF: `libjxs` encodes the LightBayer/MainBayer/HighBayer profile
-  limits in its source (`profile=MainBayer;cfa=RGGB;cpih=tetrix`), so the parameter set in 17.2 can be
-  checked against it now; the PDF still settles level/sublevel choices.
+- Part 2 constraints read from the `libjxs` source (`xs_config.c`, profile table and checks), pending the
+  PDF: every profile except "unrestricted" fixes the slice height at 16 sampling-grid lines (so `Hsl` =
+  16 / 2^NL,y precinct rows: 16 / 8 / 4 for Light/Main/HighBayer); Bayer profiles need `Nc = 4`,
+  `Sd = 1`, `Bw = 20` (or 18 with an NLT), `Fq = Bw − 12`, Star-Tetrix (LightBayer: in-line `Cf = 3`
+  only), `NL,x ≤ 5`, `NL,y` = 0 / 1 / 2 for Light / Main / High, no column-width limit; the level follows
+  from the grid size (1776 × 1778 → `2k-1`) and the sublevel caps the bit rate (`3bpp`, `6bpp`, …). Our
+  17.2 set is a valid MainBayer stream; the reference encoder produced exactly that (`Ppih = 0xb340`,
+  `Plev = 0x1004`).
 
 ---
 
