@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -27,6 +27,61 @@ cc_library(
     ],
 )
 
+# Sample planes and the coefficient containers shared by the entropy and transform layers.
+cc_library(
+    name = "image",
+    hdrs = [
+        "coefficients.hpp",
+        "image.hpp",
+    ],
+    deps = [":codestream"],
+)
+
+# --- entropy layer (Annex C, D): compression/jxs/entropy.{hpp,cc} ---------------------------------
+cc_library(
+    name = "entropy",
+    srcs = ["entropy.cc"],
+    hdrs = ["entropy.hpp"],
+    deps = [
+        ":bitio",
+        ":codestream",
+        ":image",
+        "@fmt",
+    ],
+)
+
+cc_test(
+    name = "entropy_test",
+    size = "small",
+    srcs = ["entropy_test.cc"],
+    deps = [
+        ":entropy",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# --- transform layer (Annex E, F, G): compression/jxs/transform.{hpp,cc} ---------------------------
+cc_library(
+    name = "transform",
+    srcs = ["transform.cc"],
+    hdrs = ["transform.hpp"],
+    deps = [
+        ":codestream",
+        ":image",
+        "@fmt",
+    ],
+)
+
+cc_test(
+    name = "transform_test",
+    size = "small",
+    srcs = ["transform_test.cc"],
+    deps = [
+        ":transform",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "headers_test",
     size = "small",
@@ -45,5 +100,16 @@ cc_test(
     deps = [
         ":codestream",
         "@googletest//:gtest_main",
+    ],
+)
+
+# Prints headers/geometry of a codestream and walks every slice, precinct and packet (structural
+# check of the parser against real streams, e.g. from the ISO reference encoder).
+cc_binary(
+    name = "jxs_info",
+    srcs = ["jxs_info.cc"],
+    deps = [
+        ":codestream",
+        "@fmt",
     ],
 )
