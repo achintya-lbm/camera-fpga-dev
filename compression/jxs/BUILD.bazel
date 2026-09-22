@@ -113,3 +113,26 @@ cc_binary(
         "@fmt",
     ],
 )
+
+# --- decoder: headers + entropy + transforms -> component planes ---------------------------------
+cc_library(
+    name = "decoder",
+    srcs = ["decoder.cc"],
+    hdrs = ["decoder.hpp"],
+    deps = [
+        ":codestream",
+        ":entropy",
+        ":image",
+        ":transform",
+        "@fmt",
+    ],
+)
+
+cc_binary(
+    name = "jxs_decode",
+    srcs = ["jxs_decode.cc"],
+    deps = [
+        ":decoder",
+        "@fmt",
+    ],
+)

@@ -11,6 +11,7 @@
 #include <span>
 #include <vector>
 
+#include "compression/jxs/bitio.hpp"
 #include "compression/jxs/coefficients.hpp"
 #include "compression/jxs/geometry.hpp"
 #include "compression/jxs/headers.hpp"
@@ -19,6 +20,17 @@ namespace jxs {
 
 // Truncation position T[p,b] (C.6.2, Table C.12): clamp(q - G[b] - (P[b] < r), 0, 2^Br - 1).
 int ComputeTruncation(const Headers& h, int band, int q, int r);
+
+// Variable-length code of bitplane-count residuals (C.7) in the context of predictor r and truncation
+// position t. Decoding throws when 2^(Br+1) consecutive 1-bits are read (Table C.17: lost synchronisation).
+int VlcDecode(BitReader* reader, int r, int t, int br);  // Table C.17
+void VlcEncode(BitWriter* writer, int x, int r, int t);  // Table C.18; x must be >= -max(r - t, 0)
+
+// Quantisation (Annex D). `m` is the bitplane count M of the code group, `t` the truncation position
+// T[p,b], `uniform` selects Qpih = 1 (otherwise deadzone). Magnitudes must be below 2^m.
+int BitplaneCount(std::span<const int32_t> group);                          // Table D.5
+uint32_t Quantize(uint32_t magnitude, int m, int t, bool uniform);          // Tables D.3 / D.4
+int32_t Dequantize(uint32_t v, bool negative, int m, int t, bool uniform);  // Tables D.1 / D.2
 
 // State the vertical bitplane-count predictor carries from one precinct row to the next within a
 // precinct column (C.6.3): last decoded line of M per band and T per band of the precinct above.

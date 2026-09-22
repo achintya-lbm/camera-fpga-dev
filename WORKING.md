@@ -5,6 +5,26 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-22 (night) — Reference decoder complete and bit-exact against the ISO reference
+
+- Two agents delivered the remaining layers against the interfaces from the afternoon: `entropy.cc`
+  (Annex C/D, decoder and encoder; 13 tests; re-encodes every precinct of the ISO encoder's CAM4 stream
+  byte-exactly except don't-care sign bits of zero coefficients, which libjxs writes as 1) and
+  `transform.cc` (Annex E/F/G forward + inverse; 20 tests incl. a lossless full-frame Bayer chain).
+  Findings worth keeping: sample-domain DWT round trips are exact only for Fq = 0 (E.13 rounding);
+  Tables E.4/E.11 print `T[βH, y, i]` where `x` is meant; the extended NLT round trip is exact only under
+  a condition the standard does not state (recorded in transform.cc); `vlc()` takes `T`, not
+  `max(T, Ttop)`; encoders must code `M := max(M, T)`.
+- `decoder.cc` + `jxs_decode`: `compression/tools/verify_decoder.sh` → 23/23 sample-exact: 16 CAM4
+  streams (10/12-bit, NL,y 1/2, Cf 0/3, both quantisers, e1/e2 variants) against the ISO decoder and all
+  7 ISO 21122-4 Bayer vectors (210–216: NL,y 0/1/2, quadratic + extended NLT incl. E = 4 and DCO ≠ 0,
+  14-bit, Fs 0/1, Lh 0/1, raw-mode packets, RGGB/BGGR/GBRG) against the conformance images.
+- The one integration bug: I placed decoded components in the mosaic by the CRG offsets; the reference
+  places Ω[c] at the sub-pixel implied by the pattern type Ct (Tables F.4/F.10), so for BGGR/GBRG the
+  codestream's "component 0" is physically blue. Fixed in `ToMosaic`/`FromMosaic`.
+- Speed of the scalar golden model: ≈ 0.55 s per 12.6 Mpixel frame (entropy ≈ 0.15 s, Star-Tetrix ≈ 0.4 s).
+- Next: reference encoder (rate control + `jxs_encode`), lossless round trips, then the CUDA decoder (M7.3).
+
 ## 2026-09-22 (afternoon/evening) — JPEG XS: spec study, oracle, first codec layers, first numbers
 
 - Two agents read ISO/IEC 21122-1:2024 (120 pp.) and surveyed implementations →
