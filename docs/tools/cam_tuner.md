@@ -125,6 +125,9 @@ change the synthetic image.
 - `--display` renders the RGBA16 frames in a Holoviz window on the machine running the tool; the controls stay on the
   web page (Holoviz's ImGui is private to `libholoscan_viz.so`, so there are no in-window sliders).
 - `cam_player` is the plain multi-camera viewer without controls; `bandwidth_test` is the throughput/CRC tool.
+- `tools/preview/stream_probe.py http://<host>:8080/stream.mjpg 5` records the MJPEG stream for a few seconds and
+  reports parts, all-black frames, decode errors and part intervals (exit 1 on any problem); it is how the
+  2026-09-21 flicker was pinned down.
 - GPU memory: the rig allocates 6 CSI blocks and 4 RGBA16 blocks per camera (`CameraChainOptions::csi_pool_blocks` /
   `bayer_pool_blocks`), 555 MB per camera at 3552×3556. With fewer blocks CsiToBayerOp throws
   `Too many chunks allocated` as soon as the demosaic stage lags (first frames compile NVRTC kernels) instead of
