@@ -1,5 +1,16 @@
-# compression — TODO (not designed)
+# compression — JPEG XS (ISO/IEC 21122)
 
-Placeholder for the JPEG XS-like low-latency compression experiment (FPGA encoder after the CSI
-data-type filter, GPU decoder as a Holoscan operator). Intentionally empty until milestones M0–M6 in
-`TODO.md` are done. See `DESIGN.md` §17 for the intended shape.
+Cuts the per-camera link rate (4.1–4.9 Gbit/s per IMX676 at its DA322 ceiling) by 3–4× so that four
+cameras fit the 10G link. Design and parameter set: `DESIGN.md` §17; milestones: `TODO.md` M7.
+
+| Path | Content |
+|---|---|
+| `docs/jpegxs_part1_notes.md` | Implementation notes on ISO/IEC 21122-1:2024 (clause-cited): codestream syntax, decoding process, band/precinct geometry, Star-Tetrix for Bayer, latency/parallelism, errata, worked IMX676 parameters |
+| `docs/jpegxs_landscape.md` | Software/FPGA implementations, oracle choice, conformance material |
+| `jxs/` | Bit-exact C++17 reference codec (golden model for the CUDA decoder and the RTL) — M7.1 |
+| `cuda/`, `ops/` | `JpegXsDecodeOp`: CUDA decoder as a Holoscan operator replacing `CsiToBayerOp` — M7.3 |
+| `tools/` | `jxs_encode`, `jxs_decode`, `jxs_compare`, compression-study scripts — M7.1/M7.2 |
+
+Key choices (see §17.2): Bayer coded as four components on the 1776×1778 super-pixel grid with the
+Star-Tetrix transform (`Cpih = 3`), `NL,x = 5`, `NL,y = 2` (8-sensor-row precincts), `Sd = 1`, CBR rate
+control so the codestream rides the existing HSB frame transport (`bytes_written` = codestream length).

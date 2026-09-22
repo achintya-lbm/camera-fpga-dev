@@ -89,9 +89,16 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Row E1 (pattern generator saturating 10G)
 - [ ] `fpga/boards/custom_v1/` pin plan; DESIGN §16 expanded into a board requirements doc
 
-## M7 — JPEG XS-like compression (TODO, not designed)
-- [ ] Requirements: target ratio, latency, bit depths, variable frame size handling in HSB (early TLAST)
-- [ ] FPGA encoder core after the DT filter; GPU decoder operator; bitstream conformance tests
+## M7 — JPEG XS compression (design: DESIGN.md §17; notes: compression/docs/)
+- [x] Spec study of ISO/IEC 21122-1:2024 → `compression/docs/jpegxs_part1_notes.md` (2026-09-22)
+- [ ] Implementation landscape / oracle choice → `compression/docs/jpegxs_landscape.md`
+- [ ] Obtain ISO/IEC 21122-2 (profiles/levels, Bayer constraints) and 21122-4 (conformance) — user
+- [ ] M7.1 Reference codec `compression/jxs` (C++17, bit-exact): codestream parser + geometry (Annex A/B), entropy decoder (Annex C), dequant/IDWT/Star-Tetrix/output (D–G), then encoder with CBR `(Q,R)` search; CLIs `jxs_encode`/`jxs_decode`/`jxs_compare`; lossless round-trip tests on synthetic images and captured frames
+- [ ] M7.1b External oracle built from source under `tools/workspace/`; interop tests both directions (lossless first, then lossy)
+- [ ] M7.2 Compression study on CAM4 captures (RAW10/RAW12, Star-Tetrix vs none, 2–6 bit/pixel): ratio vs PSNR/max error → pick the CBR budget; record in `docs/bandwidth.md` and DESIGN §17.1
+- [ ] M7.3 `JpegXsDecodeOp` (CUDA) bit-exact vs the reference decoder, ≤ 10 ms per full frame; `CameraRig` selects it via `compression: jpegxs`; emulator serves pre-encoded frames; `bandwidth_test` + preview end to end without FPGA
+- [ ] M7.4 FPGA encoder (after M6): architecture + CertusPro-NX resource/timing estimate, RTL under `fpga/rtl/jpegxs/`, cocotb vs the reference encoder, integration after the DT filter; frame = codestream with TLAST at EOC (DESIGN §17.4)
+- [ ] M7.5 System test: CAM4 compressed over the link at the CBR budget, then the multi-camera rows B/C at compressed rates
 
 ## Stretch / parking lot
 - [ ] Multi-camera hardware sync: IMX676 XVS/XHS via P22 J3–J5 and DA322 MFP GPIO (FPGA GPIO → trigger fan-out)

@@ -25,7 +25,7 @@ Goals, in order:
 1. One camera at maximum resolution and frame rate.
 2. Multiple cameras at lower resolution / frame rate, saturating the 10G link.
 3. A "hypothetical 1G link" saturation test.
-4. Later: JPEG XS-like compression on the FPGA with GPU decode — **TODO only**, not designed here.
+4. JPEG XS compression: FPGA encoder, CUDA decoder, software reference codec — design in §17, work in `compression/`.
 
 Non-goals for now: Jetson/DGX Spark builds, RTP/SRT streaming, ISP quality tuning, multi-camera
 hardware sync (stretch goal, see TODO).
@@ -448,7 +448,7 @@ camera-fpga-dev/
 │   ├── sim/             cocotb + Verilator tests for our RTL
 │   ├── radiant/         build.tcl, BUILD (radiant_bitstream targets; tags manual/no-sandbox/no-remote/no-cache)
 │   └── bitstreams/      vendor/fpga_cpnx_da322_3454_2511.bit (LFS), manifests/manifest_da322.yaml
-└── compression/README.md   TODO: JPEG XS-like FPGA encoder + GPU decoder
+└── compression/            JPEG XS: docs/, jxs/ (reference codec), cuda/ + ops/ (decoder operator), tools/ (§17)
 ```
 
 ---
@@ -577,7 +577,7 @@ bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
 | M4 | 10G saturation matrix on RoCE and Linux paths | rows A1–C3 recorded with pass/fail |
 | M5 | 1G link test (FPGA 1G mode, else emulator fallback) | rows D1–D3 recorded |
 | M6 | Own FPGA build for DA322 (+ test pattern generator, DT filter, MTU/1G options), host migration to HSB ≥ 2.7, custom-board pin plan | our bitstream streams 4 cameras; E1 saturates 10G |
-| M7 | JPEG XS-like compression | **TODO — not designed** |
+| M7 | JPEG XS compression | **designed (§17); spec notes done; implementation started 2026-09-22** |
 
 ---
 
@@ -622,11 +622,117 @@ bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
 
 ---
 
-## 17. Future work — JPEG XS-like compression (TODO)
+## 17. JPEG XS compression (M7) — design
 
-Not designed yet. Placeholder in `compression/README.md`. When started: FPGA-side line-based wavelet
-codec after the CSI data-type filter, GPU-side decoder as a Holoscan operator, HSB payload stays
-"opaque bytes" (frame size becomes variable → requires HSB early-TLAST handling).
+Spec study: `compression/docs/jpegxs_part1_notes.md` (ISO/IEC 21122-1:2024, clause-cited);
+implementation landscape: `compression/docs/jpegxs_landscape.md`. This section fixes the architecture
+and the first parameter set; numbers marked *study* are decided by M7.2.
+
+### 17.1 Why and how much
+
+One IMX676 at its DA322 ceiling is 4.94 Gbit/s (`FULL_RAW12`, 32.6 fps) or 4.12 Gbit/s (`FULL_RAW10`);
+four cameras are 16.5–19.8 Gbit/s against ≈ 9.3 Gbit/s of usable 10G payload. Real JPEG XS, not a
+"JPEG XS-like" codec: interoperability with software oracles and commercial FPGA IP is what makes the
+result checkable. Targets:
+
+| Target | Value | Consequence |
+|---|---|---|
+| Ratio | 3:1 nominal (4 bit/sensor pixel from RAW12), 4:1 stretch (*study*) | 4 cameras `FULL_RAW12` @ 32.6 fps = 6.6 Gbit/s (3:1) or 4.9 Gbit/s (4:1) |
+| Quality | visually lossless on our scenes; PSNR and per-channel error measured on real captures (*study*) | M7.2 decides bpp |
+| Latency | line-based: one precinct (8 sensor rows) plus DWT/Star-Tetrix context in the encoder; sub-frame in the decoder | no frame buffer in the FPGA; no TDC (Annex H) |
+| Bit depths | RAW10 and RAW12 (B = 10/12); lossless mode (Fq = 0, Bw = B) for validation only | one code path, parameters differ |
+| Transport | unchanged HSB data plane: the codestream is the "sensor frame" | see 17.4 |
+
+### 17.2 Codestream parameters (first set; Part 2 profile limits still to be checked)
+
+Bayer data is coded as a **four-component image on the super-pixel grid** (notes §5): `Wf × Hf =
+1776 × 1778`, `Nc = 4`, component order R, G1, G2, B with the physical RGGB phase in the CRG marker
+(`Ct = 0`). Decorrelation with **Star-Tetrix** (`Cpih = 3`, CTS `Cf = 0`, `e1 = e2 = 2` to start): an
+integer-reversible lifting over the four planes producing Ya, Cb, Cr, Δ. `Cf = 0` needs one super-pixel
+row of context above and below (≈ 11 KB for the encoder) and is worth it over the in-line `Cf = 3`
+variant, which degrades the vertical steps.
+
+| Parameter | Value | Why |
+|---|---|---|
+| `NL,x`, `NL,y` | 5, 2 | Annex I CFA examples; precinct = 4 grid lines = 8 sensor rows |
+| `Sd` (CWD) | 1 — Δ not decomposed | as in Tables I.9–I.11; CAP bit 5 |
+| Bands / packets | 31 bands, 14 packets per precinct | notes App. B |
+| `Bw, Fq, Br` | 20, 8, 4 (lossy); `B, 0, 4` (lossless) | Table A.8 |
+| `Cw` | 0 (one column) first; 2 (512-wide columns, 4 per line) once the CUDA decoder wants column parallelism | B.5 |
+| `Hsl` | 16 precinct rows (128 sensor rows) | resync + slice-parallel decode; DWT still spans slices |
+| Vertical prediction | allowed inside slices, never in a slice's first row | C.6.3; the encoder may disable it for decoder parallelism |
+| Weights `G[b], P[b]` | Table I.11 (`Cf = 0`) as the starting point | Annex I |
+| `Rl, Fs, Rm` | 0, 0, 0 | screen-content tools not needed |
+| Rate control | CBR per frame: fixed byte budget per precinct row (or slice), `(Q, R)` search on the bitplane counts, `Lcod` in the PIH | HSB needs a bounded frame; notes §7.4 |
+| TDC, NLT | off | Annex H needs a frame buffer; sensor data is linear |
+
+Both the lossless mode (`Fq = 0`) and Star-Tetrix are integer-exact, so a lossless round trip must be
+bit-exact — that is the first correctness test for every implementation (software, CUDA, RTL).
+
+### 17.3 Architecture
+
+```
+FPGA (our build, after M6)                                  Host
+CSI-2 RX → unpack → DT filter → [JPEG XS encoder] → HSB IP → 10G ──RoCE/UDP──► receiver (GPU memory, bytes_written)
+                                  Star-Tetrix fwd (2 super-pixel rows)                    │
+                                  2-D 5/3 DWT (NL,y = 2: 4 grid lines + context)          ▼
+                                  bitplane counts per code group                JpegXsDecodeOp (CUDA)
+                                  (Q,R) search per precinct row → packetiser      parse → per-precinct entropy decode →
+                                  one precinct of coefficients (~71 KB) buffered  dequant → IDWT → inverse Star-Tetrix →
+                                                                                  u16 Bayer plane (same tensor as CsiToBayerOp)
+                                                                                                   │
+                                                                                  ImageProcessorOp → demosaic → encode/preview (unchanged)
+```
+
+- **Decoder operator** (`compression/ops/jpegxs_decode_op`): replaces `CsiToBayerOp` in
+  `CameraRig::BuildChain` when the camera config says `compression: jpegxs`; input is the receiver's
+  frame with `bytes_written` valid bytes; output is the `uint16 [H,W]` Bayer tensor the rest of the
+  chain already consumes. Kernel plan (notes §7.3): one thread block per precinct for headers and the
+  bit-serial bitplane-count VLC (one thread per band-line), prefix sums over `M − T` for the data and sign
+  subpackets, then separable IDWT and pointwise inverse Star-Tetrix over the whole frame. Budget: ≤ 10 ms
+  per full frame on the test GPU (33 fps leaves 30 ms).
+- **Reference codec** (`compression/jxs`, C++17, no CUDA): bit-exact encoder and decoder written from
+  the spec, slow but simple. It is the golden model for the CUDA decoder (identical output on every test
+  stream) and for the RTL (cocotb compares against it), generates test streams, and hosts the rate-control
+  experiments. CLI: `jxs_encode`, `jxs_decode`, `jxs_compare` (PSNR / max error per component).
+- **External oracle**: an independent JPEG XS implementation built from source under
+  `tools/workspace/` so that our streams decode there and theirs decode here (both directions, lossless
+  and lossy). Candidate and constraints (Bayer support, edition) in `compression/docs/jpegxs_landscape.md`.
+- **FPGA encoder** (`fpga/rtl/jpegxs/`, after M6): line-based pipeline as drawn; the `(Q, R)` search is
+  a size estimation from the bitplane counts (the syntax makes the packet sizes computable without
+  emitting bits), so the encoder buffers exactly one precinct plus context. Resource and timing estimate
+  for the CertusPro-NX before RTL; one camera first — four full-rate encoders on an LFCPNX-100 are not
+  assumed to fit.
+
+### 17.4 Transport over HSB
+
+hololink configures the FPGA with a fixed `frame_size` (`DP_BUFFER_LENGTH`) and the FPGA ends each frame
+with a write-immediate; the metadata page carries `bytes_written`, which our stats already treat as the
+frame's valid length. A codestream therefore travels as an ordinary frame whose configured size is the
+CBR budget (plus headers) and whose valid length is `bytes_written`; the FPGA asserts TLAST at the EOC
+marker. No protocol change, no early-TLAST work — only the receiver-side consumer changes. The 4 KB page
+granularity of the RoCE path and the MTU maths are untouched.
+
+### 17.5 Validation
+
+1. Reference codec: lossless round trip bit-exact on synthetic images and every captured mode; lossy
+   round trip error bounded by the quantiser step; constraints of C.5.3 checked by an encoder self-test.
+2. Interop with the external oracle in both directions (lossless first).
+3. CUDA decoder output identical to the reference decoder on all streams; timing per frame recorded.
+4. Compression study (M7.2) on the CAM4 captures: ratio vs PSNR/max error for Star-Tetrix vs no transform,
+   RAW10 and RAW12, 2–6 bit/pixel; pick the CBR budget.
+5. End to end without FPGA: the emulator serves pre-encoded frames; `bandwidth_test` and the preview run
+   with `JpegXsDecodeOp`.
+6. With our FPGA build: RTL vs reference encoder (cocotb), then CAM4 compressed over the link, then the
+   multi-camera rows B/C at compressed rates.
+
+### 17.6 Open items
+
+- Obtain ISO/IEC 21122-2 (profiles, levels, sublevels; Bayer profile constraints on `NL,y`, `Cw`, `Hsl`,
+  `Sd`) and 21122-4 (conformance streams, decoder error bounds) before freezing 17.2 — user action.
+- Spec ambiguities to settle against reference behaviour (notes §8.1): band index of non-decomposed
+  components, line-index convention, significance flag polarity.
+- FPGA feasibility for 4 encoders vs 1 shared time-multiplexed encoder per pair of cameras.
 
 ---
 
