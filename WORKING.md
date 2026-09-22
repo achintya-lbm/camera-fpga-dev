@@ -5,6 +5,29 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-22 (afternoon/evening) — JPEG XS: spec study, oracle, first codec layers, first numbers
+
+- Two agents read ISO/IEC 21122-1:2024 (120 pp.) and surveyed implementations →
+  `compression/docs/jpegxs_part1_notes.md` (clause-cited) and `jpegxs_landscape.md` (104 sources).
+  Decisions folded into DESIGN §17: real JPEG XS with Bayer coded as four super-pixel components and the
+  Star-Tetrix transform; CBR so the codestream rides the HSB frame transport; oracles = ISO 21122-5
+  reference software (only open Bayer-profile encoder; evaluation licence) + ISO 21122-4 conformance
+  vectors + SVT-JPEG-XS decoder. Patent pool and intoPIX's Lattice core noted as business items.
+- `tools/workspace/jxs_reference`: the ISO reference software builds with Bazel straight from the ISO
+  download (`jxs_encoder`/`jxs_decoder`). It refuses Bayer profiles without explicit `gains=`/`priorities=`
+  (Annex I tables I.10/I.11, transcribed in the notes, work). 0.8 s encode / 0.4 s decode per frame.
+- `compression/jxs` (part 1 of the reference codec): Annex A header parse/write/validate, Annex C
+  precinct/packet headers, Annex B geometry. Tests reproduce the standard's Tables B.1–B.3 and B.5–B.11.
+  `jxs_info` walked the reference encoder's MainBayer stream of a real CAM4 frame — 889 precincts, 5334
+  packets, unsignalled significance-subpacket sizes inferred — and landed exactly on EOC. `.bazelignore`
+  no longer excludes `compression/` (Bazel needed a `shutdown` to notice).
+- First compression numbers on the CAM4 evening frame (`compression/docs/compression_study.md`): 3 bpp →
+  63.6 dB PSNR, max error 4/1023, 3.33:1 vs RAW10; 2 bpp → 59 dB; 1 bpp → 55 dB / max 15. NL,y = 2 is
+  worth only 0.1 dB over NL,y = 1 → MainBayer layout (4-sensor-row precincts) is the working choice.
+- In flight: entropy layer (Annex C/D) and transform layer (Annex E/F/G) by two agents against the
+  interfaces in `entropy.hpp` / `transform.hpp`; `decoder.cc` + `jxs_decode` written and waiting for them.
+  Acceptance: `jxs_decode` output bit-identical to the ISO decoder on the CAM4 streams.
+
 ## 2026-09-22 — GPUDirect receive works with `iommu=pt`; scope narrowed to CAM4 until compression
 
 - User rebooted the test machine with `iommu=pt`: NIC and GPU IOMMU groups now `identity` (were `DMA-FQ`).

@@ -654,15 +654,15 @@ variant, which degrades the vertical steps.
 
 | Parameter | Value | Why |
 |---|---|---|
-| `NL,x`, `NL,y` | 5, 2 | Annex I CFA examples; precinct = 4 grid lines = 8 sensor rows |
+| `NL,x`, `NL,y` | 5, 1 (MainBayer); 5, 2 (HighBayer) measured +0.1 dB only | `compression/docs/compression_study.md`; precinct = 2 grid lines = 4 sensor rows |
 | `Sd` (CWD) | 1 — Δ not decomposed | as in Tables I.9–I.11; CAP bit 5 |
-| Bands / packets | 31 bands, 14 packets per precinct | notes App. B |
+| Bands / packets | 25 bands, 6 packets per precinct (5h/1v); 31 / 14 for 5h/2v | notes App. B, `jxs_info` on a reference stream |
 | `Bw, Fq, Br` | 20, 8, 4 (lossy); `B, 0, 4` (lossless) | Table A.8 |
 | `Cw` | 0 (one column) first; 2 (512-wide columns, 4 per line) once the CUDA decoder wants column parallelism | B.5 |
-| `Hsl` | 16 precinct rows (128 sensor rows) | resync + slice-parallel decode; DWT still spans slices |
+| `Hsl` | 8 precinct rows (32 sensor rows), as the reference encoder chooses for MainBayer | resync + slice-parallel decode; DWT still spans slices |
 | Vertical prediction | allowed inside slices, never in a slice's first row | C.6.3; the encoder may disable it for decoder parallelism |
-| Weights `G[b], P[b]` | Table I.11 (`Cf = 0`) as the starting point | Annex I |
-| `Rl, Fs, Rm` | 0, 0, 0 | screen-content tools not needed |
+| Weights `G[b], P[b]` | Table I.10 (5h/1v) / I.11 (5h/2v), `Cf = 0` columns | Annex I |
+| `Rl, Fs, Rm`, `Qpih` | reference encoder uses `Rl = 1`, `Lh = 1`, `Rm = 1`, uniform quantiser; we start from the same choices and revisit `Rl`/`Lh` (they cost header bytes but simplify the FPGA's raw-mode fallback) | `jxs_info` on the reference stream |
 | Rate control | CBR per frame: fixed byte budget per precinct row (or slice), `(Q, R)` search on the bitplane counts, `Lcod` in the PIH | HSB needs a bounded frame; notes §7.4 |
 | TDC, NLT | off | Annex H needs a frame buffer; sensor data is linear |
 
