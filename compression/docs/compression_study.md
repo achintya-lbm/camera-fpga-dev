@@ -30,6 +30,36 @@ Observations:
 - Reference software speed on the dev box: 0.8 s encode, 0.4 s decode per 12.6 Mpixel frame.
 - Per-channel error at 3 bpp: R 0.71, G1 0.68, G2 0.52, B 0.76 LSB rms — no channel is favoured.
 
+## 2026-09-22 — 12-bit frame (catalogue capture, backlit chart, 2 ms / 0 dB, mean 287/4095)
+
+`cam3-J1D_000_f000029.raw` from `~/captures/imx676_cam4/FULL_RAW12/`, MainBayer 5h/1v, Table I.10
+weights; errors in 12-bit LSB (peak 4095):
+
+| bit per sensor pixel | bytes | ratio vs RAW12 packed | PSNR | max err | rms |
+|---|---|---|---|---|---|
+| 4.0 | 6,315,456 | 3.0:1 | 74.55 dB | 5 | 0.767 |
+| 3.0 | 4,736,592 | 4.0:1 | 70.10 dB | 9 | 1.280 |
+| 2.0 | 3,157,728 | 6.0:1 | 65.61 dB | 17 | 2.147 |
+| 1.5 | 2,368,296 | 8.0:1 | 63.60 dB | 23 | 2.705 |
+
+In 10-bit-equivalent units the 12-bit results match the 10-bit ones (3 bpp: max error 9/4095 ≈
+2.2/1023): the codec spends the same bits per pixel and the extra source bits are noise.
+
+## Visual check
+
+Side-by-side crops of the most detailed 600×600-sensor-pixel region of each frame (nearest-neighbour
+half-resolution demosaic, grey-world white balance, gamma 2.2, exposure normalised):
+
+![RAW10 evening frame at 3 / 2 / 1.5 / 1 bpp](img/cam4_evening_raw10_rates.jpg)
+
+![RAW12 backlit chart at 4 / 3 / 2 / 1.5 bpp](img/cam4_chart_raw12_rates.jpg)
+
+No visible artefacts down to 1 bpp on these frames — but **both captures are strongly defocused**
+(the lens was not focused for either session), so they carry little high-frequency content and the
+numbers above are optimistic for sharp scenes. Before fixing the CBR budget: refocus the lens, capture
+a daylight and a high-detail (text/chart) frame in RAW10 and RAW12, and repeat with
+`compression/tools/raw_to_pgm.py` + the ISO encoder.
+
 Link budget implication (per camera, 32.6 fps): 3 bpp → 1.24 Gbit/s, 2 bpp → 0.82 Gbit/s; four
-cameras at 3 bpp need 4.9 Gbit/s of the 10G link. RAW12 sources and more scenes (daylight, high
-detail, saturated highlights) still to be measured; visual inspection of the 1–2 bpp results pending.
+cameras at 3 bpp need 4.9 Gbit/s of the 10G link. Still to do: sharp daylight / high-detail scenes (see the visual check), Star-Tetrix vs `Cpih = 0`, and
+the reference encoder's `Cf = 3` (in-line) variant to quantify what the FPGA-friendly transform costs.
