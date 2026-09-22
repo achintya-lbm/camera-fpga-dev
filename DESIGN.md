@@ -577,7 +577,7 @@ bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
 | M4 | 10G saturation matrix on RoCE and Linux paths | rows A1–C3 recorded with pass/fail |
 | M5 | 1G link test (FPGA 1G mode, else emulator fallback) | rows D1–D3 recorded |
 | M6 | Own FPGA build for DA322 (+ test pattern generator, DT filter, MTU/1G options), host migration to HSB ≥ 2.7, custom-board pin plan | our bitstream streams 4 cameras; E1 saturates 10G |
-| M7 | JPEG XS compression | **designed (§17); spec notes done; implementation started 2026-09-22** |
+| M7 | JPEG XS compression | **reference codec complete (encoder + decoder, bit-exact vs the ISO reference and the 21122-4 Bayer vectors, 2026-09-22); CUDA decoder and FPGA encoder next** |
 
 ---
 

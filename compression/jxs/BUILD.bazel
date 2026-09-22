@@ -136,3 +136,38 @@ cc_binary(
         "@fmt",
     ],
 )
+
+# --- encoder: component planes -> codestream, with constant-bit-rate (Q, R) search ------------------
+cc_library(
+    name = "encoder",
+    srcs = ["encoder.cc"],
+    hdrs = ["encoder.hpp"],
+    deps = [
+        ":codestream",
+        ":entropy",
+        ":image",
+        ":transform",
+        "@fmt",
+    ],
+)
+
+cc_test(
+    name = "encoder_test",
+    size = "medium",
+    srcs = ["encoder_test.cc"],
+    deps = [
+        ":decoder",
+        ":encoder",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "jxs_encode",
+    srcs = ["jxs_encode.cc"],
+    deps = [
+        ":decoder",
+        ":encoder",
+        "@fmt",
+    ],
+)

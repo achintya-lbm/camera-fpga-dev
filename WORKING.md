@@ -23,7 +23,12 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
   places Ω[c] at the sub-pixel implied by the pattern type Ct (Tables F.4/F.10), so for BGGR/GBRG the
   codestream's "component 0" is physically blue. Fixed in `ToMosaic`/`FromMosaic`.
 - Speed of the scalar golden model: ≈ 0.55 s per 12.6 Mpixel frame (entropy ≈ 0.15 s, Star-Tetrix ≈ 0.4 s).
-- Next: reference encoder (rate control + `jxs_encode`), lossless round trips, then the CUDA decoder (M7.3).
+- Reference encoder (`encoder.cc`, `jxs_encode`): forward transforms → per precinct the largest `(Q, R)`
+  that fits an equal byte budget (binary search on actual packet sizes), vertical prediction, filler to
+  the budget, `Lcod` set; lossless mode with `Q = 0`. On the 12-bit CAM4 frame: 3 bpp 69.92 dB (ISO
+  encoder 70.10), 2 bpp 65.25 dB (65.61); the ISO decoder decodes our streams identically to ours;
+  lossless = 4.77 bpp (2.5:1), bit-exact through the ISO decoder. Encode ≈ 2 s per frame.
+  M7.1 (reference codec) is complete. Next: CUDA decoder operator (M7.3) and sharp captures for M7.2.
 
 ## 2026-09-22 (afternoon/evening) — JPEG XS: spec study, oracle, first codec layers, first numbers
 

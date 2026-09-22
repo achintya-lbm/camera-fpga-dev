@@ -56,6 +56,12 @@ In 10-bit-equivalent units the 12-bit results match the 10-bit ones (3 bpp: max 
 | `e1 = e2 = 2` | 68.20 dB | 13 | −1.90 dB |
 | dead-zone quantiser (`Qpih = 0`) | 68.88 dB | 11 | −1.22 dB |
 
+Our own reference encoder (`jxs_encode`, equal byte budget per precinct, binary search on `(Q, R)`,
+vertical prediction, no significance coding) on the same frame: 3 bpp → 69.92 dB / max 10 (ISO
+encoder 70.10 dB), 2 bpp → 65.25 dB / max 17 (ISO 65.61 dB); 1.7 % of the bytes are filler because
+budgets are not carried between precincts. Lossless (`--lossless`, `Fq = 0`): 7,529,140 bytes =
+4.77 bpp = 2.5:1 vs 12-bit samples, reproduced bit-exactly by the ISO decoder.
+
 Take-aways for the FPGA encoder: the in-line transform (`Cf = 3`, no super-pixel-row buffer) costs a
 quarter of a dB — affordable; keep `e1 = e2 = 0`; use the uniform quantiser.
 
