@@ -329,7 +329,7 @@ int main(int argc, char** argv) {
   std::string log_level = "info";
   cli.add_option("--config", config_path, "rig YAML (see configs/)")->required()->check(CLI::ExistingFile);
   cli.add_option("--port", port_name, "camera connector to tune (J1A..J1D / CAM1..CAM4); default: every camera in the config");
-  cli.add_option("--mode", mode_name, "sensor mode override (FULL_RAW10, FULL_RAW12, BIN2_RAW12, CROP_3552X2160_RAW10, CROP_1280X720_RAW10)");
+  cli.add_option("--mode", mode_name, "sensor mode override (FULL_RAW10, FULL_RAW12, BIN2_RAW12, BIN2_RAW12_60, CROP_3552X2160_RAW10, CROP_1280X720_RAW10)");
   cli.add_option("--fps", fps, "frame rate override (0 = config / mode default)");
   cli.add_option("--exposure-ms", exposure_ms, "initial exposure override");
   cli.add_option("--gain-db", gain_db, "initial analog gain override (0..72)");

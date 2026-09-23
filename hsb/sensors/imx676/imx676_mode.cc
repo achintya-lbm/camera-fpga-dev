@@ -20,6 +20,9 @@ constexpr std::array<ModeInfo, kModeCount> kModes = {{
     // Centred 720p window: HST/VST chosen as multiples of 4 / 2.
     {CROP_1280X720_RAW10, "CROP_1280X720_RAW10", Readout::kCrop, 1280, 720, PixelFormat::RAW_10, 60.0,
      {1136, 1280, 1418, 720}},
+    // Binning at 891 Mbps with the line period the 10-bit ADC allows (measured: 341 and 314 give correct
+    // images, 280 gives flat black-level frames): 74.25 MHz / (341 x 3630) = 60 fps.
+    {BIN2_RAW12_60, "BIN2_RAW12_60", Readout::kBinning2x2, 1776, 1778, PixelFormat::RAW_12, 60.0, {}, 341},
 }};
 
 uint32_t RoundUpEven(double v) {
@@ -127,7 +130,7 @@ uint32_t VmaxForFps(const ModeInfo& mode, uint16_t hmax, double fps) {
 
 double FpsFor(uint16_t hmax, uint32_t vmax) { return kHmaxClockHz / (static_cast<double>(hmax) * vmax); }
 
-double MaxFps(const ModeInfo& mode, LaneRate rate) { return FpsFor(HmaxFor(rate), MinVmax(mode)); }
+double MaxFps(const ModeInfo& mode, LaneRate rate) { return FpsFor(mode.hmax ? mode.hmax : HmaxFor(rate), MinVmax(mode)); }
 
 unsigned BitsPerPixel(PixelFormat format) {
   switch (format) {
@@ -192,7 +195,7 @@ Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
     }
     rate = *best;
   }
-  uint16_t hmax = HmaxFor(rate, lanes);
+  uint16_t hmax = mode.hmax ? mode.hmax : HmaxFor(rate, lanes);
   if (hmax_override) {
     if (*hmax_override < 100) throw std::invalid_argument(fmt::format("HMAX override {} is implausibly small", *hmax_override));
     hmax = *hmax_override;

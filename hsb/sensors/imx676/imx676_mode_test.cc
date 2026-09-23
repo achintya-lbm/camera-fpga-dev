@@ -178,3 +178,27 @@ TEST(Imx676Tables, SequencesAreSane) {
 
 }  // namespace
 }  // namespace hsb::imx676
+
+namespace hsb::imx676 {
+namespace {
+
+TEST(Imx676ModeBin60, NamedModeUsesHmax341) {
+  const ModeInfo& m = Info(BIN2_RAW12_60);
+  EXPECT_EQ(m.hmax, 341);
+  EXPECT_EQ(m.width, 1776u);
+  EXPECT_EQ(m.pixel_format, PixelFormat::RAW_12);
+  EXPECT_EQ(ParseMode("BIN2_RAW12_60"), BIN2_RAW12_60);
+  EXPECT_NEAR(MaxFps(m, LaneRate::k891), 60.02, 0.05);  // 74.25e6 / (341 * 3628)
+  const Timing t = PlanTiming(m, 60.0, 1500);
+  EXPECT_EQ(t.lane_rate, LaneRate::k891);
+  EXPECT_EQ(t.hmax, 341);
+  EXPECT_EQ(t.vmax, 3630u);
+  EXPECT_NEAR(t.fps, 59.98, 0.01);
+  // The plain binning mode keeps the FRAMOS table value.
+  EXPECT_EQ(PlanTiming(Info(BIN2_RAW12), 60.0, 1500).hmax, 628);
+  // An explicit override still wins over the mode's value.
+  EXPECT_EQ(PlanTiming(m, 60.0, 1500, std::nullopt, 4, 400).hmax, 400);
+}
+
+}  // namespace
+}  // namespace hsb::imx676

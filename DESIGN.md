@@ -337,6 +337,7 @@ D-PHY limit, `HMAX` follows the lane rate, fps is chosen via `VMAX`; `PlanTiming
 | `FULL_RAW10` | all-pixel | 3552×3556 | 10 | 1188 Mbps | 32.6 |
 | `FULL_RAW12` | all-pixel | 3552×3556 | 12 | 1440 Mbps | 32.6 |
 | `BIN2_RAW12` | 2×2 binning (10-bit AD, 12-bit out; no 10-bit binned output exists) | 1776×1778 | 12 | 891 Mbps | 32.6 with the FRAMOS HMAX 628; **60 with `hmax: 341`** (measured, §4.1) |
+| `BIN2_RAW12_60` | as `BIN2_RAW12` with HMAX 341 (the 10-bit ADC's line time; measured 2026-09-23) | 1776×1778 | 12 | 891 Mbps | 60 |
 | `CROP_3552X2160_RAW10` | vertical window | 3552×2160 | 10 | 1188 Mbps | 53 |
 | `CROP_1280X720_RAW10` | centred window | 1280×720 | 10 | 1188 Mbps | 149 (1G tests) |
 

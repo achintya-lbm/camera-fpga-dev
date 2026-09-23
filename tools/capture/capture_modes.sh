@@ -10,7 +10,7 @@
 # tools/py:raw_frame for previews/statistics. Requires the apps built (bazel build //apps/... //tools/py:raw_frame).
 set -euo pipefail
 port=J1D; receiver=linux; ip=192.168.0.2; out=captures/imx676_cam4; duration=12
-modes="FULL_RAW10 FULL_RAW12 BIN2_RAW12 CROP_3552X2160_RAW10 CROP_1280X720_RAW10"
+modes="FULL_RAW10 FULL_RAW12 BIN2_RAW12 BIN2_RAW12_60 CROP_3552X2160_RAW10 CROP_1280X720_RAW10"
 fps=1000   # above every ceiling: PlanTiming clamps VMAX to its minimum, i.e. the mode's maximum rate
 exposure_ms=3; gain_db=0
 while [[ $# -gt 0 ]]; do

@@ -11,7 +11,7 @@ p22:
   expander_address: 0x20
 cameras:
   - port: J1A
-    mode: FULL_RAW12    # FULL_RAW10 | FULL_RAW12 | BIN2_RAW12 | CROP_3552X2160_RAW10 | CROP_1280X720_RAW10
+    mode: FULL_RAW12    # FULL_RAW10 | FULL_RAW12 | BIN2_RAW12 | BIN2_RAW12_60 | CROP_3552X2160_RAW10 | CROP_1280X720_RAW10
     fps: 30
     lanes: 4
     exposure_ms: 10

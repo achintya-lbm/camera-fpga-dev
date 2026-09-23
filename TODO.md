@@ -32,7 +32,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [x] INCK_SEL 0x01 / 37.125 MHz and the fixed init block confirmed streaming (measured 32.65 fps at HMAX 628 / VMAX 3628, i.e. the frame clock is ~0.2 % above 74.25 MHz nominal)
 - [ ] Validate the HMAX minimum per lane rate against the Sony datasheet (10-bit at 1188 Mbps may allow < 628 → higher FULL_RAW10 fps)
 - [x] Binning experiment (2026-09-23): `BIN2_RAW12` at 891 Mbps with HMAX 341 → 60 fps, correct images, CRC-clean, 0 drops over RoCE (`configs/da322_cam4_bin60.yaml`); HMAX 314 → 65 fps also fine; HMAX ≤ 280 → flat black-level frames that still pass CRC. Sensor-side rule, not MIPI bandwidth (§4.1)
-- [ ] Binning follow-ups: promote `hmax: 341` to a named mode (`BIN2_RAW12_60`); try VMAX = 1778 + 72 (do binned rows count once?); try MDBIT = 0 (10-bit output) with ADDMODE = 1; test whether 10-bit full frame at 1188 Mbps tolerates HMAX < 628
+- [x] `BIN2_RAW12_60` named mode (HMAX 341) added 2026-09-23
+- [ ] Binning follow-ups: try VMAX = 1778 + 72 (do binned rows count once?); try MDBIT = 0 (10-bit output) with ADDMODE = 1; test whether 10-bit full frame at 1188 Mbps tolerates HMAX < 628
 - [ ] Determine embedded-data lines / `start_byte` from `bytes_written` with and without the DT filter
 - [ ] First light: `linux_imx676_player.py`; then 4 ports via `multi_player.py`-style config; confirm J1A..J1D ↔ sensor_id ↔ I2C bus mapping and CAM_EN polarity
 - [ ] Measure 3.3 V current per camera port; record link stats, PTP offset

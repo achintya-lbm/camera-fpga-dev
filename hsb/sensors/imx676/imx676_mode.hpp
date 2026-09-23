@@ -46,7 +46,8 @@ enum Mode : int {
   BIN2_RAW12 = 2,            // 1776x1778, 2x2 binning (10-bit AD, 12-bit output; the sensor has no 10-bit binned output)
   CROP_3552X2160_RAW10 = 3,  // vertical crop, full width
   CROP_1280X720_RAW10 = 4,   // centred window crop for the 1G tests
-  kModeCount = 5,
+  BIN2_RAW12_60 = 5,         // BIN2_RAW12 with HMAX 341 (Sony's 60 fps point) instead of the FRAMOS 628; measured 2026-09-23
+  kModeCount = 6,
 };
 
 struct CropWindow {
@@ -64,7 +65,8 @@ struct ModeInfo {
   uint32_t height;  // output lines per frame
   PixelFormat pixel_format;
   double default_fps;
-  CropWindow crop;  // all zero unless readout == kCrop
+  CropWindow crop;    // all zero unless readout == kCrop
+  uint16_t hmax = 0;  // 0 = FRAMOS table value for the lane rate; otherwise a forced line period (DESIGN §4.1)
 };
 
 const ModeInfo& Info(Mode mode);  // throws std::out_of_range
