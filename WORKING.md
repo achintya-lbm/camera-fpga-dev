@@ -5,6 +5,22 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-23 — New direction: own bitstream with demosaic in the FPGA before Holoscan (JPEG XS paused)
+
+- The DA322 runs Tauro's vendor bitstream (IP 0x2511); nothing custom yet. The user wants a debayer
+  block in the FPGA as the first custom-logic step, ahead of compression.
+- Facts gathered (DESIGN §12): upstream holoscan-sensor-bridge 2.7.0 ships the Hololink IP as
+  SystemVerilog (0x2606) plus a CertusPro-NX reference design whose pin file matches the DA322 manual
+  ball-for-ball on the shared functions and fills the manual's gaps (SERDES C8/B7 A9/A8, SFP_TX_DIS F9,
+  EEPROM I2C H7/H6, QSPI, GPIO — CAM_EN of J1A is `GPIO[5]`); vendored as `@hsb_fpga`. The 2.7.0 host
+  needs Holoscan 4.4.0 and IP ≥ 0x2602 but its `hsb_lite_2510` module still drives 0x2510+ images, so
+  the host can move first while the vendor bitstream stays.
+- Radiant: not installed anywhere. Lattice's licensing table lists CertusPro-NX as a subscription
+  device (free licence = MachXO4/MachXO5-NX/Certus-NX/CrossLink-NX/iCE40UP); a 60-day evaluation
+  licence covers the full flow. Radiant 2026.1 supports Ubuntu 24.04.
+- Debayer output rate: full-res RGB888 at 30 fps is 9.09 Gbit/s (link limit); the first hardware
+  target is the binned 60 fps stream to RGB888 at 4.55 Gbit/s. Plan in TODO M6; M7 marked paused.
+
 ## 2026-09-23 — Binning at 60 fps on the DA322: HMAX 341 works, the floor is between 280 and 314
 
 - Question from the user: binned output at 60 fps is only 2.27 Gbit/s, so why 32.6 fps? Because the

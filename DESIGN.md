@@ -526,34 +526,84 @@ Simulation: thin `verilator_cc_library` over the BCR `verilator` module; cocotb 
 
 ---
 
-## 12. FPGA design plan (own build for DA322)
+## 12. FPGA design plan (own build for DA322) — updated 2026-09-23
 
-Sources (all Apache-2.0 in holoscan-sensor-bridge `fpga/`):
+**Today the DA322 runs Tauro's vendor bitstream** (`fpga_cpnx_da322_3454_2511.bit`, Hololink IP
+0x2511); no custom logic. The user's direction (2026-09-23): before any JPEG XS work, build our own
+bitstream and put a **demosaic (debayer) block in the FPGA** ahead of the Hololink packetiser.
 
-- `fpga/nv_hsb_ip/` — the Hololink IP as SystemVerilog (`top/HOLOLINK_top.sv`, `dp_pkt/`, `roce/`,
-  `packetizer/`, `ptp/`, `bootp/`, `ecb/`, `i2c/`, `spi/`, `gpio`, `reg_map/`, …) + `nv_hsb_ip_simple_tb/`.
-- `fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/` — CertusPro-NX reference for the Tauro **DA326**
-  (`rtl/top/FPGA_top.sv`, `HOLOLINK_def.svh`, `mipi_cam_rcvr/mipi_cam_rcvr.sv`, `eth_10gb/`, `clk_n_rst/`,
-  `build/`, `lattice_env.sh`): 2× soft D-PHY RX, Hololink core, 10G MAC+PCS+SERDES, I2C buses
-  (0 ctrl/EEPROM, 1 camera, 2 PoC), 11 GPIO, CAM_RST, CAM_MCLK 27 MHz, QSPI flash, JTAG. Its Ethernet
-  refclk (161.1328125 MHz) and MIPI port balls (L12–L16, L3–P2) match the DA322 manual, so the pin
-  file is a strong starting point for the DA322.
-- Lattice IP catalog (Radiant "IP on Server"): CSI-2/DSI D-PHY RX (soft) ×4, 10 Gb Ethernet MAC 1.1.0
-  (with GMII/MII/XGMII dynamic speed selection → 1G mode candidate), 10 Gb Ethernet PCS, PLLs.
-  Licensing of these IPs to be confirmed in the catalog (expected no-charge).
+### 12.1 What we have
 
-Work: `fpga/boards/da322/da322.pdc` from `docs/hardware/da322.md` + DA326 Ethernet/SFP/EEPROM pins
-(confirm with Tauro); `da322_top.sv` instantiating 4 MIPI receivers, 4 camera I2C buses, our
-`csi_dt_filter` (mirrors Tauro's `MIPI_DT_CTRL/STAT` semantics so the host layer stays the same),
-`test_pattern_gen` (programmable W×H×bpp×fps RAW source per SIF for matrix row E1), PTP; parameter
-`HOST_MTU` 1500 vs 4096 as a build option; 1G MAC mode as a build/runtime option.
-Programming: JTAG (HW-USBN-2B + Tag-Connect, `radiant_programmer` or `hsb_flasher`), then OTA via
-manifest. Host migration afterwards: HSB ≥ 2.7 + `taurotech_da322` `hololink_module` driver
-(model: `hololink_module/module/taurotech_da326/module_entry.cpp`: publisher with sensor count,
-data-plane count, `hif_address`, `MipiDphyInterfaceV1::program(port, lanes, line_rate_mbps)`).
+- Sources (all Apache-2.0, vendored as `@hsb_fpga` = holoscan-sensor-bridge **2.7.0**,
+  `tools/workspace/hsb_fpga`): `fpga/nv_hsb_ip/` — the Hololink IP as 113 SystemVerilog files
+  (`HOLOLINK_REV 0x2606`, backward-compatible protocol to 0x2603), 64-bit AXI-Stream sensor interfaces
+  (`i_sif_axis_*`, up to 32), host interface, I2C/SPI/GPIO, PTP, RoCE/UDP data plane;
+  `fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/` — the CertusPro-NX reference for the Tauro DA326:
+  `FPGA_top.sv` (708 lines), `mipi_cam_rcvr.sv` (soft D-PHY RX → 64-bit AXIS with `{vc, line_end,
+  is_embedded}` in tuser, lines padded to 64 bytes), `eth_10gb_top.sv`, `clk_n_rst.sv`, Radiant
+  `build.sh`/`build.tcl`, IP configs (D-PHY RX, 10G MAC/PCS, PLLs), `fpga_cpnx.pdc`/`.sdc`.
+- **Pin map**: the reference `.pdc` matches the DA322 manual ball-for-ball where they overlap (J1D and
+  J1B MIPI, camera I2C H9/H10, CAM_MCLK H3, Ethernet refclk D10/E10), so its SERDES (C8/B7, A9/A8),
+  `SFP_TX_DIS` (F9), EEPROM I2C (H7/H6), QSPI flash and GPIO assignments close the "not documented by
+  Tauro" gaps (`docs/hardware/da322.md`). J1A and J1C balls come from the manual. One lane/clock
+  discrepancy on J1B (N2/P2 vs L3/L2) must be settled by the first passthrough build.
+- Reference configuration: `SENSOR_RX_IF_INST 2`, `DATAPATH_WIDTH 64`, `I2C_INST 3`, `GPIO_INST 16`,
+  `SPI_INST 2`, `HOST_IF_INST 1`. The DA322 needs 4 receivers and 4 (or 5) I2C buses.
+- Toolchain: **Radiant 2026.1** (Ubuntu 22.04/24.04). Lattice's licensing table lists CertusPro-NX
+  (LFCPNX) as a **subscription** device; the free licence covers MachXO4/MachXO5-NX(25/35/65)/
+  Certus-NX/CrossLink-NX/iCE40UP only. Lattice offers a **60-day evaluation licence for the full tool
+  flow**, which is the route to a first bitstream; a subscription is needed for sustained work. Nothing
+  is installed yet on either machine.
+- Programming: JTAG via HW-USBN-2B + Tag-Connect on J2 (`docs/bringup/flashing.md` path B); the vendor
+  `.bit` in `fpga/bitstreams/vendor/` is the recovery image, so reflashing is reversible.
 
-Known gaps: SFP+ SERDES lane assignment, SFP control pins, EEPROM I2C balls, whether the vendor
-bitstream supports 1G and MTU 4096, Radiant license. All tracked in `TODO.md`.
+### 12.2 Host-side consequence
+
+Our host stack is hololink 2.5.0-PB6 + Tauro patch and expects the 0x2511 IP. A bitstream built from
+the 2.7.0 IP identifies as 0x2606, which the 2.5.0 host rejects; the 2.7.0 host requires
+`hsb_ip_version ≥ 0x2602` **but** ships a `hsb_lite_2510` module that accepts FPGAs back to 0x2510,
+i.e. the vendor image too. So the order is: migrate the host to hololink 2.7.0 first (Holoscan SDK
+source pin 3.9 → 4.4.0, redo our three hololink patches, write a `taurotech_da322` module modelled on
+upstream `taurotech_da326` + the vendor patch's board specifics), verify the vendor bitstream still
+streams through it, then switch to our bitstream.
+
+### 12.3 Build plan (M6, replaces the previous list)
+
+1. **Tooling (user):** Radiant 2026.1 on the dev box, 60-day evaluation licence (or subscription);
+   `lattice_env.sh` pointed at it. Build the unmodified DA326 reference (`build.sh`) as the flow check.
+2. **Host migration** to 2.7.0 with the `hsb_lite_2510` path; `bandwidth_test` and `cam_tuner` must
+   reproduce today's results on the vendor bitstream.
+3. **Passthrough bitstream for the DA322**: reference design + `SENSOR_RX_IF_INST 4`, four
+   `mipi_cam_rcvr` instances on the J1A–J1D balls, four camera I2C buses, CAM_EN on GPIO as today,
+   Tauro's `MIPI_DT_CTRL/STAT` filter re-implemented (`csi_dt_filter`, keeps `hsb/board/da322`
+   unchanged) or dropped in favour of a per-camera data-type parameter; timing closure on the
+   LFCPNX-100; flash by JTAG; enumerate; stream RAW10/RAW12 from CAM4 exactly as with the vendor image
+   (CRC, frame counts, `imx676_samples` rows). Tag the design `2606` with our board id.
+4. **Demosaic block** (`fpga/rtl/demosaic/`): per camera, between `mipi_cam_rcvr` and the IP's sensor
+   interface. Unpack RAW10/RAW12 from the 64-bit stream, 2-line (bilinear) or 4-line (Malvar-He-Cutler)
+   buffer in EBR, RGGB phase from the frame/line counters, emit packed RGB; repack to 64-bit AXIS with
+   the same `tlast`/`tuser` framing so the packetiser is unchanged. Golden model in C++ (`hsb/` or
+   `compression/`-style) + cocotb/Verilator tests, then hardware compare against the host-side
+   `BayerDemosaicOp` output of the same raw frame.
+5. **Host receive path for RGB**: `CameraRig` gains a `pixel_pipeline: fpga_rgb` option that skips
+   `CsiToBayerOp`/`ImageProcessorOp`/demosaic and hands the received RGB tensor to the preview/encoder.
+
+### 12.4 Output format — the bandwidth question debayer raises
+
+Demosaicing multiplies the data. Payload rates for one IMX676 (10G usable ≈ 9.3 Gbit/s):
+
+| Source | RAW12 | RGB888 | RGB 12-bit | YUV422 8-bit | YUV420 8-bit |
+|---|---|---|---|---|---|
+| 3552×3556 @ 30 fps | 4.55 | **9.09** | 13.6 | 6.06 | 4.55 |
+| 3552×3556 @ 25 fps | 3.79 | 7.58 | 11.4 | 5.05 | 3.79 |
+| 1776×1778 @ 60 fps (`BIN2_RAW12_60`) | 2.27 | **4.55** | 6.82 | 3.03 | 2.27 |
+
+Full-resolution RGB888 at 30 fps sits on the link limit and leaves nothing for a second camera;
+12-bit RGB does not fit at all. First target therefore: **debayer the binned 60 fps stream to RGB888
+(4.55 Gbit/s)**, which proves the FPGA pipeline with margin. Full resolution then needs either RGB888
+at ≤ 25 fps, a 4:2:2 or 4:2:0 conversion after the demosaic (6.1 / 4.6 Gbit/s), or the JPEG XS
+encoder of §17 — which is why compression was on the plan. JPEG XS work (M7) is **paused** until the
+FPGA debayer runs.
 
 ---
 

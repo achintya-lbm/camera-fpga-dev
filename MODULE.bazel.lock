@@ -577,7 +577,7 @@
   "moduleExtensions": {
     "//tools/workspace:default.bzl%camera_fpga_dev_repositories": {
       "general": {
-        "bzlTransitiveDigest": "8u2Dq0NyX8uTI1/0SsgWLUhGrhpsokQkBXHHSJkR1tc=",
+        "bzlTransitiveDigest": "eyVl4F30GSAK2MyfHUZyCUcmDPmbQllxhX913LOxtaM=",
         "usagesDigest": "+xLuTlbOpdT/T3i58oTtBwPUU6aSra9dTZWBBXQqPac=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
@@ -643,6 +643,17 @@
           "holoscan_sdk": {
             "repoRuleId": "@@//tools/workspace/holoscan:repository.bzl%holoscan_repository",
             "attributes": {}
+          },
+          "hsb_fpga": {
+            "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
+            "attributes": {
+              "urls": [
+                "https://github.com/nvidia-holoscan/holoscan-sensor-bridge/archive/refs/tags/2.7.0.tar.gz"
+              ],
+              "sha256": "ca0b86a3ac59db087217d33d4e93f161799d07e67cab5d8911718a9833db0037",
+              "strip_prefix": "holoscan-sensor-bridge-2.7.0",
+              "build_file": "@@//tools/workspace/hsb_fpga:package.BUILD.bazel"
+            }
           },
           "hwloc": {
             "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",

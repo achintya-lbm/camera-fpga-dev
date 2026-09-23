@@ -1,0 +1,33 @@
+# -*- mode: bazel -*-
+# FPGA sources of holoscan-sensor-bridge 2.7.0 (see tools/workspace/hsb_fpga/repository.bzl).
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "nv_hsb_ip",
+    srcs = glob(["fpga/nv_hsb_ip/**"]),
+)
+
+filegroup(
+    name = "nv_hsb_ip_simple_tb",
+    srcs = glob(["fpga/nv_hsb_ip_simple_tb/**"]),
+)
+
+filegroup(
+    name = "mipi_cpnx_ref_design",
+    srcs = glob(["fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/**"]),
+)
+
+filegroup(
+    name = "lattice_cpnx100_eth_sensor_bridge",
+    srcs = glob(["fpga/lattice/**"]),
+)
+
+filegroup(
+    name = "fpga_sources",
+    srcs = [
+        ":lattice_cpnx100_eth_sensor_bridge",
+        ":mipi_cpnx_ref_design",
+        ":nv_hsb_ip",
+        ":nv_hsb_ip_simple_tb",
+    ],
+)

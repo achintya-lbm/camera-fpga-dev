@@ -78,20 +78,22 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Option B: emulator on the dev box NIC pair forced to 1G (`ethtool -s <if> speed 1000`) driving rows D1–D3 rates
 - [ ] Results in `docs/bandwidth.md`
 
-## M6 — Own FPGA build for DA322 (+ HSB ≥ 2.7 migration, custom-board prep)
-- [ ] Radiant 2026.x Linux install; license (eval/subscription) — `[!]` until license resolved
-- [ ] Confirm Lattice IP licensing: D-PHY RX soft IP, 10 Gb Ethernet MAC 1.1.0, 10 Gb Ethernet PCS
-- [ ] Obtain from Tauro (or infer from DA326 ref design): SFP+ SERDES lane, SFP control pins, EEPROM I2C balls
-- [ ] `fpga/boards/da322/da322.pdc` + `.sdc` from `docs/hardware/da322.md`
-- [ ] `fpga/rtl/da322_top.sv`: 4× MIPI RX (soft D-PHY), 4 camera I2C buses, `csi_dt_filter` (MIPI_DT_CTRL/STAT semantics), `test_pattern_gen`, PTP; build options `HOST_MTU` 1500/4096, 1G MAC mode
-- [ ] `tools/bazel/radiant.bzl` (`@radiant` repo rule, `radiant_bitstream`), `fpga/radiant/build.tcl`
-- [ ] cocotb/Verilator tests for `csi_dt_filter`, `test_pattern_gen`
-- [ ] JTAG programming runbook (HW-USBN-2B + Tag-Connect); OTA via manifest afterwards
-- [ ] Host migration: HSB ≥ 2.7 pin, Holoscan SDK 4.x source pin, `taurotech_da322` hololink_module driver (model: `taurotech_da326`)
-- [ ] Row E1 (pattern generator saturating 10G)
+## M6 — Own FPGA build for DA322: passthrough first, then demosaic in the FPGA (DESIGN §12)
+- [x] Sources located and vendored: `@hsb_fpga` = holoscan-sensor-bridge 2.7.0 (`fpga/nv_hsb_ip` SystemVerilog IP 0x2606, `nv_mipi_ref_design/mipi_cpnx_ref_design` for the DA326, Radiant build scripts) — 2026-09-23
+- [x] Pin gaps closed from the DA326 reference `.pdc` (SERDES, SFP_TX_DIS, EEPROM I2C, QSPI, GPIO) — `docs/hardware/da322.md`; J1B lane/clock discrepancy to verify on hardware
+- [ ] `[!]` Tooling (user): Radiant 2026.1 on the dev box + 60-day evaluation licence (CertusPro-NX is a subscription device per Lattice's table); build the unmodified DA326 reference as the flow check
+- [ ] Confirm Lattice IP licensing in the catalog: soft D-PHY RX ×4, 10 Gb Ethernet MAC 1.1.0, 10 Gb Ethernet PCS
+- [ ] Host migration to hololink 2.7.0 (Holoscan SDK 4.4.0 source pin, redo patches, `taurotech_da322` hololink_module from `taurotech_da326` + the vendor patch); vendor bitstream must still stream via the `hsb_lite_2510` path
+- [ ] Passthrough bitstream: `fpga/boards/da322/da322.pdc` + `.sdc`, `da322_top.sv` with `SENSOR_RX_IF_INST 4`, 4× `mipi_cam_rcvr`, 4 camera I2C buses, CAM_EN GPIO, `csi_dt_filter` (MIPI_DT_CTRL/STAT semantics); timing closure; JTAG flash; CAM4 RAW10/RAW12 rows reproduced (CRC, fps)
+- [ ] `tools/bazel/radiant.bzl` (`@radiant` repo rule, `radiant_bitstream`), `fpga/radiant/build.tcl`; RTL simulation tooling (Verilator/cocotb) for our blocks
+- [ ] Demosaic block `fpga/rtl/demosaic/` (RAW10/12 unpack, line buffers, bilinear first, RGB888 repack to 64-bit AXIS) + C++ golden model + simulation tests; first hardware target `BIN2_RAW12_60` → RGB888 at 4.55 Gbit/s
+- [ ] Host `pixel_pipeline: fpga_rgb` in `CameraRig` (skip CsiToBayer/ISP/demosaic), preview of FPGA-debayered video, pixel comparison against the host demosaic of the same raw frame
+- [ ] Full-resolution debayered output decision: RGB888 ≤ 25 fps vs 4:2:2/4:2:0 conversion vs JPEG XS (DESIGN §12.4)
+- [ ] Row E1 (pattern generator saturating 10G); `test_pattern_gen`
+- [ ] JTAG programming runbook refresh (Radiant 2026.1 Programmer); OTA via manifest for our images
 - [ ] `fpga/boards/custom_v1/` pin plan; DESIGN §16 expanded into a board requirements doc
 
-## M7 — JPEG XS compression (design: DESIGN.md §17; notes: compression/docs/)
+## M7 — JPEG XS compression (design: DESIGN.md §17; notes: compression/docs/) — PAUSED 2026-09-23 until the FPGA demosaic (M6) runs
 - [x] Spec study of ISO/IEC 21122-1:2024 → `compression/docs/jpegxs_part1_notes.md` (2026-09-22)
 - [x] Implementation landscape / oracle choice → `compression/docs/jpegxs_landscape.md` (2026-09-22): ISO 21122-5 `libjxs` primary oracle (only open Bayer-profile encoder), ISO 21122-4 conformance streams 210–216, SVT-JPEG-XS as second decoder
 - [ ] Obtain ISO/IEC 21122-2 (profiles/levels, Bayer constraints) and 21122-4 (conformance) — user

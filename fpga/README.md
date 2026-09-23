@@ -14,10 +14,13 @@ custom board around the same FPGA. Plan: `DESIGN.md` §12; checklist: `TODO.md` 
 
 ## Sources we build on
 
-- holoscan-sensor-bridge `fpga/nv_hsb_ip/` (Hololink IP, SystemVerilog, Apache-2.0) and
+- holoscan-sensor-bridge **2.7.0**, vendored as the Bazel repository `@hsb_fpga`
+  (`tools/workspace/hsb_fpga`; `bazel build @hsb_fpga//:fpga_sources` fetches it): `fpga/nv_hsb_ip/`
+  (Hololink IP 0x2606, 113 SystemVerilog files, Apache-2.0) and
   `fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/` (CertusPro-NX reference for the Tauro DA326: 2× soft
-  D-PHY, 10G MAC/PCS/SERDES, I2C, GPIO, QSPI). Its Ethernet refclk and MIPI balls match the DA322 manual.
-- DA322 pins: `docs/hardware/da322.md`. Missing (ask Tauro): SFP+ SERDES lane, SFP control pins, EEPROM I2C.
+  D-PHY, 10G MAC/PCS/SERDES, I2C, GPIO, QSPI, Radiant `build.sh`). Its `.pdc` matches the DA322 manual
+  ball-for-ball where they overlap and supplies the balls the manual omits (`docs/hardware/da322.md`).
+- Plan and host-migration consequences: `DESIGN.md` §12.
 
 ## Radiant and licensing
 
