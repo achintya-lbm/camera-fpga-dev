@@ -1,0 +1,25 @@
+# CAM4 (J1D) and CAM3 (J1C) together over GPUDirect RDMA, e.g. for lens tests with two live previews:
+# cam_tuner serves camera 0 (J1D) on --http-port and camera 1 (J1C) on --http-port + 1.
+hololink_ip: 192.168.0.2
+receiver: roce          # roce | linux
+ibv_name: ""
+ibv_port: 1
+cuda_device: 0
+lane_rate_limit_mbps: 1500
+report_interval_s: 2.0
+p22:
+  enabled: true
+  expander_address: 0x20
+cameras:
+  - port: J1D
+    mode: FULL_RAW10
+    fps: 30
+    lanes: 4
+    exposure_ms: 20
+    gain_db: 12
+  - port: J1C
+    mode: FULL_RAW10
+    fps: 30
+    lanes: 4
+    exposure_ms: 20
+    gain_db: 12
