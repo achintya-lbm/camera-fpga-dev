@@ -48,6 +48,7 @@ CameraConfig ParseCamera(const YAML::Node& node, size_t index) {
   cam.test_pattern = Get<bool>(node, "test_pattern", false);
   cam.test_pattern_select = static_cast<uint8_t>(Get<unsigned>(node, "test_pattern_select", 0));
   if (node["lane_rate_mbps"]) cam.lane_rate_mbps = node["lane_rate_mbps"].as<unsigned>();
+  if (node["hmax"]) cam.hmax = static_cast<uint16_t>(node["hmax"].as<unsigned>());
   return cam;
 }
 

@@ -25,6 +25,7 @@ struct Imx676Options {
   unsigned lanes = 4;                  // 2 or 4 (LANEMODE); the board's lane setting must match
   unsigned max_lane_rate_mbps = 1500;  // receiver D-PHY limit; DA322 soft D-PHY = 1500
   std::optional<LaneRate> lane_rate;   // force a DATARATE_SEL value
+  std::optional<uint16_t> hmax;        // force HMAX below the FRAMOS table value (experiments)
   double fps = 0;                      // 0 => mode default
   uint32_t leading_lines = 0;          // non-image lines reaching the receiver (see ConfigureConverter)
   double exposure_s = 0.010;

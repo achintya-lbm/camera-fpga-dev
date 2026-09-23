@@ -45,7 +45,7 @@ void NativeImx676Sensor::set_mode(CameraMode mode) {
   height_ = info.height;
   pixel_format_ = info.pixel_format;
   bayer_format_ = hololink::csi::BayerFormat::RGGB;
-  timing_ = PlanTiming(info, options_.fps, options_.max_lane_rate_mbps, options_.lane_rate, options_.lanes);
+  timing_ = PlanTiming(info, options_.fps, options_.max_lane_rate_mbps, options_.lane_rate, options_.lanes, options_.hmax);
 }
 
 void NativeImx676Sensor::configure(CameraMode mode) {

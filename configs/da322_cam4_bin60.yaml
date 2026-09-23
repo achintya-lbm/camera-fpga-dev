@@ -1,0 +1,21 @@
+# Experiment (DESIGN §4.1): 2x2 binning at the 891 Mbps lane rate with HMAX forced to 341 instead of the
+# FRAMOS table value 628 -> 60 fps if the sensor tolerates the shorter line. Binned output at 60 fps is
+# 2.27 Gbit/s, far below what four 891 Mbps lanes carry.
+hololink_ip: 192.168.0.2
+receiver: roce
+ibv_name: ""
+ibv_port: 1
+cuda_device: 0
+lane_rate_limit_mbps: 1500
+report_interval_s: 2.0
+p22:
+  enabled: true
+  expander_address: 0x20
+cameras:
+  - port: J1D
+    mode: BIN2_RAW12
+    fps: 60
+    hmax: 341
+    lanes: 4
+    exposure_ms: 10
+    gain_db: 12

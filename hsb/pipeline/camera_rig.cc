@@ -90,6 +90,7 @@ void CameraRig::Connect(double enumeration_timeout_s) {
       options.lane_rate = rate;
     }
     options.fps = cam.fps;
+    options.hmax = cam.hmax;
     options.leading_lines = config_.leading_lines;
     options.exposure_s = cam.exposure_ms / 1000.0;
     options.gain_db = cam.gain_db;

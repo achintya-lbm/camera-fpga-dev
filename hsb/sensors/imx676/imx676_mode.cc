@@ -171,7 +171,7 @@ uint16_t GainRegisterForDb(double gain_db) {
 }
 
 Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
-                  std::optional<LaneRate> lane_rate_override, unsigned lanes) {
+                  std::optional<LaneRate> lane_rate_override, unsigned lanes, std::optional<uint16_t> hmax_override) {
   if (lanes != 2 && lanes != 4) throw std::invalid_argument("IMX676 supports 2 or 4 lanes");
   LaneRate rate;
   if (lane_rate_override) {
@@ -192,7 +192,11 @@ Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
     }
     rate = *best;
   }
-  const uint16_t hmax = HmaxFor(rate, lanes);
+  uint16_t hmax = HmaxFor(rate, lanes);
+  if (hmax_override) {
+    if (*hmax_override < 100) throw std::invalid_argument(fmt::format("HMAX override {} is implausibly small", *hmax_override));
+    hmax = *hmax_override;
+  }
   const double wanted = fps > 0 ? fps : mode.default_fps;
   const uint32_t vmax = VmaxForFps(mode, hmax, wanted);
   return Timing{rate, hmax, vmax, FpsFor(hmax, vmax)};

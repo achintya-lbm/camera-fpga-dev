@@ -26,6 +26,7 @@ struct CameraConfig {
   bool test_pattern = false;
   uint8_t test_pattern_select = 0;
   std::optional<unsigned> lane_rate_mbps;  // force DATARATE_SEL
+  std::optional<uint16_t> hmax;            // force HMAX (below the FRAMOS minimum for the lane rate)
   std::string label() const;               // "cam0-J1A"
 };
 

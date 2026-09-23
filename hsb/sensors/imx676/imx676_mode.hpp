@@ -112,8 +112,11 @@ struct Timing {
 };
 // Picks the fastest allowed lane rate under the receiver's D-PHY limit (or the override) and
 // derives HMAX/VMAX for the requested frame rate (0 => mode default). Throws if impossible.
+// `hmax_override` replaces the FRAMOS minimum HMAX for the lane rate (experiments below the table
+// value, e.g. binning at 891 Mbps with HMAX 341 for 60 fps); VMAX is then derived from it.
 Timing PlanTiming(const ModeInfo& mode, double fps, unsigned max_lane_rate_mbps,
-                  std::optional<LaneRate> lane_rate_override = std::nullopt, unsigned lanes = 4);
+                  std::optional<LaneRate> lane_rate_override = std::nullopt, unsigned lanes = 4,
+                  std::optional<uint16_t> hmax_override = std::nullopt);
 
 struct CsiLayout {
   uint32_t start_byte;
