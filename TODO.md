@@ -31,7 +31,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Python IMX676 driver in the vendor container (`imx676.py`, `imx676_mode.py`) mirroring `hsb/sensors/imx676`: FULL_RAW10 @ 1188 Mbps (≤ 32.6 fps), FULL_RAW12 30 @ 1440 Mbps, BIN2_RAW12 @ 891 Mbps, CROP_3552X2160_RAW10, CROP_1280X720_RAW10
 - [x] INCK_SEL 0x01 / 37.125 MHz and the fixed init block confirmed streaming (measured 32.65 fps at HMAX 628 / VMAX 3628, i.e. the frame clock is ~0.2 % above 74.25 MHz nominal)
 - [ ] Validate the HMAX minimum per lane rate against the Sony datasheet (10-bit at 1188 Mbps may allow < 628 → higher FULL_RAW10 fps)
-- [ ] Binning experiments (FRAMOS's driver is conservative: VMAX ≥ 3556 + 72 and HMAX 628 in BIN2 at 891 Mbps → 32.6 fps, while Sony quotes 240 fps for binned 1080p): try VMAX = 1778 + 72 = 1850 and smaller HMAX in `BIN2_RAW12`, check frame_number continuity / bytes_written; try MDBIT = 0 (10-bit output) with ADDMODE = 1 and see whether the DT filter sees 0x2B and images are sane
+- [x] Binning experiment (2026-09-23): `BIN2_RAW12` at 891 Mbps with HMAX 341 → 60 fps, correct images, CRC-clean, 0 drops over RoCE (`configs/da322_cam4_bin60.yaml`); HMAX 314 → 65 fps also fine; HMAX ≤ 280 → flat black-level frames that still pass CRC. Sensor-side rule, not MIPI bandwidth (§4.1)
+- [ ] Binning follow-ups: promote `hmax: 341` to a named mode (`BIN2_RAW12_60`); try VMAX = 1778 + 72 (do binned rows count once?); try MDBIT = 0 (10-bit output) with ADDMODE = 1; test whether 10-bit full frame at 1188 Mbps tolerates HMAX < 628
 - [ ] Determine embedded-data lines / `start_byte` from `bytes_written` with and without the DT filter
 - [ ] First light: `linux_imx676_player.py`; then 4 ports via `multi_player.py`-style config; confirm J1A..J1D ↔ sensor_id ↔ I2C bus mapping and CAM_EN polarity
 - [ ] Measure 3.3 V current per camera port; record link stats, PTP offset

@@ -48,6 +48,7 @@ mode, CRC checked on every frame, 0 DMAR faults, summaries `/tmp/bw_cam4_roce*.j
 | A1 (30 fps) | `FULL_RAW10` | 29.98 | 3.787 Gbps, 897 frames, 0 gaps/drops, CRC 897/897 | PASS |
 | A2 | `FULL_RAW12` | 32.57 | 4.937 Gbps, 975 frames, 0 gaps/drops, CRC 975/975 | PASS |
 | — | `CROP_1280X720_RAW10` | 149.27 | 1.376 Gbps, 4473 frames, 0 gaps/drops, CRC 4473/4473 | PASS |
+| C2' (2026-09-23) | `BIN2_RAW12` + `hmax: 341` | 59.96 | 2.273 Gbps, 1796 frames, 0 gaps/drops, CRC 1796/1796, image verified | PASS |
 
 Record for later rows: date, machine, bitstream version, hololink commit, receiver memory path
 (GPU VRAM / pinned host), CSV path.

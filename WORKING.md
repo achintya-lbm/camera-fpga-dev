@@ -5,6 +5,20 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-23 — Binning at 60 fps on the DA322: HMAX 341 works, the floor is between 280 and 314
+
+- Question from the user: binned output at 60 fps is only 2.27 Gbit/s, so why 32.6 fps? Because the
+  FRAMOS table pairs the 891 Mbps lane rate with HMAX 628; the D-PHY was never the limit.
+- Added an `hmax` override (`Imx676Options::hmax`, config key `hmax`, `PlanTiming(..., hmax_override)`)
+  and ran `bandwidth_test` on CAM4 in `BIN2_RAW12` at 891 Mbps over RoCE, CRC on every frame, dumps:
+  HMAX 341 → 59.96 fps, 2.27 Gbit/s, 1796/1796 CRC OK, image correct (sharp chart, G1 = G2 to 0.1 %,
+  black level 200 = 4 × 50); HMAX 314 → 65.2 fps, image correct; HMAX 280 → 73 fps and HMAX 250 →
+  82 fps: still CRC-clean, right size, but every pixel is 200 — the sensor gives up and sends flat
+  frames. Lesson: CRC + frame size do not prove image validity; `FrameCheckOp` now also flags flat
+  frames (sampled distinct-value count) and `bandwidth_test` fails on them.
+- Supported setting: HMAX 341 (Sony's 60 fps spec point), `configs/da322_cam4_bin60.yaml`. Four binned
+  cameras at 60 fps would be 9.1 Gbit/s — at the edge of the 10G payload; three fit comfortably.
+
 ## 2026-09-23 — Two live previews (CAM4 + CAM3) over RoCE for lens testing
 
 - `configs/da322_cam3_cam4.yaml` (J1D then J1C, `FULL_RAW10` 30 fps, 20 ms / 12 dB): `cam_tuner` serves

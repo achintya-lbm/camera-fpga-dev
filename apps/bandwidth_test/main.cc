@@ -69,6 +69,7 @@ struct Verdict {
   uint64_t short_frames = 0;
   uint64_t crc_checked = 0;
   uint64_t crc_bad = 0;
+  uint64_t flat_frames = 0;
   double latency_ms = 0;
   bool pass = false;
   std::string reason;
@@ -180,6 +181,7 @@ int main(int argc, char** argv) {
         const auto c = chain.check->snapshot();
         v.crc_checked = c.crc_checked;
         v.crc_bad = c.crc_mismatches;
+        v.flat_frames = c.flat_frames;
       }
       v.pass = true;
       if (v.frames == 0) {
@@ -197,6 +199,9 @@ int main(int argc, char** argv) {
       } else if (v.crc_bad > 0) {
         v.pass = false;
         v.reason = fmt::format("{} CRC mismatches", v.crc_bad);
+      } else if (v.flat_frames > 0) {
+        v.pass = false;
+        v.reason = fmt::format("{} of {} checked frames are flat (constant value: no image)", v.flat_frames, v.crc_checked);
       }
       aggregate_gbps += v.measured_gbps;
       all_pass = all_pass && v.pass;
@@ -224,10 +229,10 @@ int main(int argc, char** argv) {
         out << fmt::format(
             "    {{\"camera\": \"{}\", \"mode\": \"{}\", \"expected_fps\": {:.4f}, \"measured_fps\": {:.4f}, "
             "\"expected_gbps\": {:.4f}, \"payload_gbps\": {:.4f}, \"measured_gbps\": {:.4f}, \"frames\": {}, \"gaps\": {}, "
-            "\"dropped\": {}, \"short_frames\": {}, \"crc_checked\": {}, \"crc_bad\": {}, \"latency_ms\": {:.3f}, "
+            "\"dropped\": {}, \"short_frames\": {}, \"crc_checked\": {}, \"crc_bad\": {}, \"flat_frames\": {}, \"latency_ms\": {:.3f}, "
             "\"pass\": {}, \"reason\": \"{}\"}}{}\n",
             v.camera, v.mode, v.expected_fps, v.measured_fps, v.expected_gbps, v.payload_gbps, v.measured_gbps, v.frames,
-            v.gaps, v.dropped, v.short_frames, v.crc_checked, v.crc_bad, v.latency_ms, v.pass ? "true" : "false", v.reason,
+            v.gaps, v.dropped, v.short_frames, v.crc_checked, v.crc_bad, v.flat_frames, v.latency_ms, v.pass ? "true" : "false", v.reason,
             i + 1 < verdicts.size() ? "," : "");
       }
       out << "  ]\n}\n";

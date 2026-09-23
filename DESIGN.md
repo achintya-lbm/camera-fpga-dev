@@ -150,11 +150,15 @@ two roles: the *dev box* (builds, unit tests, emulator loopback tests) and the *
   3556-line readouts cap at **74.25 MHz / (628 × 3628) = 32.6 fps** for RAW10, RAW12 and binned alike;
   crops scale with height (3552×2160 → 53 fps, 1280×720 → 149 fps). `hsb/sensors/imx676/imx676_mode.cc`
   encodes these rules; `MaxFps()` is unit-tested. Two of them are the FRAMOS driver's conservative
-  choices rather than datasheet facts and are M1 experiments: a smaller HMAX for 10-bit at 1188 Mbps
-  would raise the RAW10 ceiling, and binning may not need VMAX ≥ 3556 + 72 (Sony quotes 240 fps for
-  binned 1080p, which is only possible if binned rows count once and HMAX can drop). Binning always
-  cuts lane traffic (~3.3× fewer bits per frame than full-res RAW10); whether it also raises fps on the
-  DA322 (up to ~64 fps at 1776×1778 if the VMAX rule relaxes) is what the experiment decides.
+  choices rather than datasheet facts. **Measured 2026-09-23 (binning at 891 Mbps, VMAX 3630):** the
+  sensor accepts a smaller HMAX than the table's 628 — HMAX 341 gives **60 fps** and HMAX 314 65 fps with
+  correct images (chart sharp, G1 = G2, black level 200), CRC-clean and drop-free over RoCE; at HMAX 280
+  and 250 the sensor still emits CRC-clean frames of the right size but every pixel is the black level
+  (flat frames), so the usable floor lies between 280 and 314 and **HMAX 341 (Sony's 60 fps spec point) is
+  the supported setting** — `configs/da322_cam4_bin60.yaml` (`hmax: 341`). The MIPI side was never the
+  limit: a binned line drains in 6 µs at 4 × 891 Mbps while two scanned rows at HMAX 341 take 9.2 µs.
+  Whether 10-bit full-frame at 1188 Mbps allows HMAX < 628 (higher `FULL_RAW10` fps) is the remaining
+  experiment; binning always cuts lane traffic (~3.3× fewer bits per frame than full-res RAW10).
   The IMX676 outputs RAW10 or RAW12 only (`MDBIT` is a 1-bit choice; FRAMOS lists "10/12 bit"), so
   there is no RAW8 mode; every FRAMOS binning table uses 12-bit output.
 - Single-camera payload ceilings on the DA322: FULL_RAW12 @ 32 fps = 4.85 Gbps, FULL_RAW10 @ 32 fps =
@@ -332,7 +336,7 @@ D-PHY limit, `HMAX` follows the lane rate, fps is chosen via `VMAX`; `PlanTiming
 |---|---|---|---|---|---|
 | `FULL_RAW10` | all-pixel | 3552×3556 | 10 | 1188 Mbps | 32.6 |
 | `FULL_RAW12` | all-pixel | 3552×3556 | 12 | 1440 Mbps | 32.6 |
-| `BIN2_RAW12` | 2×2 binning (10-bit AD, 12-bit out; no 10-bit binned output exists) | 1776×1778 | 12 | 891 Mbps | 32.6 |
+| `BIN2_RAW12` | 2×2 binning (10-bit AD, 12-bit out; no 10-bit binned output exists) | 1776×1778 | 12 | 891 Mbps | 32.6 with the FRAMOS HMAX 628; **60 with `hmax: 341`** (measured, §4.1) |
 | `CROP_3552X2160_RAW10` | vertical window | 3552×2160 | 10 | 1188 Mbps | 53 |
 | `CROP_1280X720_RAW10` | centred window | 1280×720 | 10 | 1188 Mbps | 149 (1G tests) |
 

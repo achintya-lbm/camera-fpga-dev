@@ -18,6 +18,7 @@ struct FrameCheckSnapshot {
   uint64_t crc_mismatches = 0;
   uint64_t crc_unavailable = 0;  // metadata crc == 0 (e.g. emulator)
   uint64_t size_mismatches = 0;
+  uint64_t flat_frames = 0;      // CRC-checked frames whose sampled content has <= 4 distinct 32-bit words
   uint64_t frames_dumped = 0;
 };
 
@@ -49,6 +50,7 @@ class FrameCheckOp : public holoscan::Operator {
   holoscan::Parameter<uint32_t> dump_limit_;
   holoscan::Parameter<std::string> dump_sidecar_;  // JSON fragment with mode/geometry, filled in by the rig
   uint32_t dumped_ = 0;
+  uint32_t logged_flat_ = 0;
 
   mutable std::mutex mutex_;
   FrameCheckSnapshot stats_;

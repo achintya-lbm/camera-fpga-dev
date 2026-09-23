@@ -1,5 +1,8 @@
 #include "hsb/ops/frame_check_op.hpp"
 
+#include <algorithm>
+#include <cstring>
+
 #include <cuda_runtime.h>
 #include <fmt/format.h>
 #include <zlib.h>
@@ -15,6 +18,37 @@ void CudaCheck(cudaError_t err, const char* what) {
   if (err != cudaSuccess) {
     throw std::runtime_error(fmt::format("{} failed: {}", what, cudaGetErrorString(err)));
   }
+}
+
+}  // namespace
+
+namespace {
+
+// A frame whose sampled 32-bit words take at most four distinct values carries no image: e.g. the
+// IMX676 pushed below its minimum line time keeps sending CRC-clean frames of the right size in which
+// every pixel is the black level (a packed RAW12 constant repeats every 3 bytes -> 3 word alignments).
+bool LooksFlat(const uint8_t* data, size_t n) {
+  if (n < 64) return false;
+  const size_t words = n / 4;
+  const size_t step = std::max<size_t>(1, words / 4096);
+  uint32_t seen[4];
+  int distinct = 0;
+  for (size_t i = 0; i < words; i += step) {
+    uint32_t w;
+    std::memcpy(&w, data + 4 * i, 4);
+    bool found = false;
+    for (int k = 0; k < distinct; ++k) {
+      if (seen[k] == w) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (distinct == 4) return false;
+      seen[distinct++] = w;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -51,9 +85,9 @@ void FrameCheckOp::stop() {
     host_buffer_ = nullptr;
     host_buffer_size_ = 0;
   }
-  HOLOSCAN_LOG_INFO("[{}] frame check: frames={} crc_checked={} crc_bad={} crc_unavailable={} size_bad={} dumped={}",
+  HOLOSCAN_LOG_INFO("[{}] frame check: frames={} crc_checked={} crc_bad={} crc_unavailable={} size_bad={} flat={} dumped={}",
                     camera_.get(), stats_.frames, stats_.crc_checked, stats_.crc_mismatches, stats_.crc_unavailable,
-                    stats_.size_mismatches, stats_.frames_dumped);
+                    stats_.size_mismatches, stats_.flat_frames, stats_.frames_dumped);
 }
 
 void FrameCheckOp::compute(holoscan::InputContext& op_input, holoscan::OutputContext& op_output,
@@ -131,6 +165,14 @@ void FrameCheckOp::compute(holoscan::InputContext& op_input, holoscan::OutputCon
       CudaCheck(cudaMemcpy(host_buffer_, tensor->data(), n, cudaMemcpyDefault), "cudaMemcpy D2H");
       const uint32_t computed = Jamcrc(host_buffer_, n);
       stats_.crc_checked += 1;
+      if (LooksFlat(host_buffer_, n)) {
+        stats_.flat_frames += 1;
+        if (logged_flat_ < 3) {
+          HOLOSCAN_LOG_WARN("[{}] frame {} is flat: the sensor sent a constant value only ({} bytes, CRC {})", camera_.get(),
+                            frame_number, n, computed == static_cast<uint32_t>(crc) ? "ok" : "bad");
+          ++logged_flat_;
+        }
+      }
       if (computed != static_cast<uint32_t>(crc)) {
         stats_.crc_mismatches += 1;
         if (logged_mismatches_ < 5) {
