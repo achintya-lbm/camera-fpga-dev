@@ -5,6 +5,15 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-23 — Two live previews (CAM4 + CAM3) over RoCE for lens testing
+
+- `configs/da322_cam3_cam4.yaml` (J1D then J1C, `FULL_RAW10` 30 fps, 20 ms / 12 dB): `cam_tuner` serves
+  CAM4 on `:8080` and CAM3 on `:8081`. Both cameras stream over GPUDirect at 30 fps, 3.79 Gbit/s each
+  (7.6 Gbit/s aggregate on the 10G link), 0 drops, streams clean. First time two sensors ran together
+  on the DA322 through this code path; the second RoCE data channel needed nothing new.
+- hololink logs `arp_set ... SIOCSARP operation failed (e=1)` at start-up: it tries to pin a static ARP
+  entry for the board and lacks CAP_NET_ADMIN; harmless (ARP resolves normally).
+
 ## 2026-09-22 (night) — Reference decoder complete and bit-exact against the ISO reference
 
 - Two agents delivered the remaining layers against the interfaces from the afternoon: `entropy.cc`
