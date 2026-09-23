@@ -18,8 +18,8 @@ cameras:
     exposure_ms: 20
     gain_db: 12
   - port: J1C
-    mode: FULL_RAW10
-    fps: 30
+    mode: BIN2_RAW12_60   # 1776x1778 binned at 60 fps (max exposure 16.6 ms at this rate)
+    fps: 60
     lanes: 4
-    exposure_ms: 20
+    exposure_ms: 10
     gain_db: 12
