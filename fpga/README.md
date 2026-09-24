@@ -5,6 +5,7 @@ custom board around the same FPGA. Plan: `DESIGN.md` §12; checklist: `TODO.md` 
 
 | Directory | Content |
 |---|---|
+| `rtl/da322/`, `boards/da322/`, `radiant/` | **the DA322 design** (four-camera passthrough): `rtl/da322/README.md` for the register map and open points; `fpga/radiant/assemble_da322.sh` runs the Radiant flow |
 | `bitstreams/` | vendor image (git-lfs), OTA manifest instructions; our images later under `bitstreams/da322/` |
 | `boards/<board>/` | pin constraints (`.pdc`), clocks (`.sdc`), board parameters — the only board-specific place |
 | `rtl/` | our RTL: DA322 top, CSI data-type filter, test-pattern generator |
@@ -26,9 +27,14 @@ custom board around the same FPGA. Plan: `DESIGN.md` §12; checklist: `TODO.md` 
 
 - Radiant runs on Linux (Ubuntu 22.04/24.04). Install under `$RADIANT_HOME` (default `~/lscc/radiant/<ver>`);
   the Bazel `@radiant` repo rule reads that variable.
-- **Free license (current):** enough for installing, generating IP, simulation and programming, but per
-  Lattice's licensing table CertusPro-NX (LFCPNX) bitstream generation requires the subscription license.
-  Verify with `lmutil lmdiag` / the Radiant license manager once installed; the M6 build targets stay
-  `manual` until a CertusPro-NX-capable license is available.
+- **Licence (2026-09-24):** Radiant 2026.1 is installed on the dev box (`~/lscc/radiant/2026.1`) but no
+  licence file is present — `radiantc` stops at `License checkout failed ... Feature: LSC_RADIANT`. Every
+  build (even for free devices) needs a FlexLM `license.dat`; Lattice's table lists CertusPro-NX (LFCPNX)
+  as a *subscription* device, with a 60-day evaluation licence available. Request it from the Lattice
+  licensing portal with the dev box's primary NIC MAC (`eno1np0`, `60:cf:84:d8:97:74`) and save the file
+  as `~/lscc/radiant/2026.1/license/license.dat` (or export `LM_LICENSE_FILE`).
+- **Programming:** the HW-USBN-2B (FTDI FT2232, `0403:6010`) is on the dev box; Radiant's `pgrcmd` /
+  Programmer drive it. `check_systemlibrary_radiant.bash` reports `libusb-0.1-4` missing (needed by the
+  programmer; `sudo apt install libusb-0.1-4`).
 - Lattice IP catalog items used (10 Gb Ethernet MAC 1.1.0, 10 Gb Ethernet PCS, CSI-2/DSI D-PHY RX) — confirm
   their license terms in the catalog before depending on them.

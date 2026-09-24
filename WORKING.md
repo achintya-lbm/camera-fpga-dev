@@ -5,6 +5,24 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-24 — DA322 passthrough design written; Radiant installed but unlicensed
+
+- User: standard Bayer passthrough at full-res 30 fps first, JTAG reflash OK, Radiant at `~/lscc/radiant`.
+- Radiant 2026.1 is installed on the dev box; `radiantc build.tcl` on the unmodified DA326 reference fails
+  at once with `License checkout failed ... Feature: LSC_RADIANT` — `license/` holds only the EULA text.
+  A CertusPro-NX-capable FlexLM file (subscription or 60-day evaluation, node-locked to `eno1np0`
+  `60:cf:84:d8:97:74`) is the blocker. The reference `build.sh` also sources `../../lattice_env.sh`
+  from the wrong depth for this design (upstream bug); our assemble script sets the environment itself.
+- HW-USBN-2B (FTDI `0403:6010`) is plugged into the dev box, so programming happens here with `pgrcmd`;
+  `libusb-0.1-4` is missing for it.
+- Wrote the DA322 design from the reference (`fpga/rtl/da322`, `fpga/boards/da322`, `fpga/radiant`):
+  4 receivers behind user window 2 (`0x3000_Y000`, lane register `+0x28` as Tauro documents), Tauro's
+  `USER_CSR`/`MIPI_DT_CTRL`/`MIPI_DT_STAT` at `0x7000_000x` implemented in the receiver (per-line
+  data-type gate + latch) and a small APB slave, 5 I2C buses (ctrl + J1A..J1D), CAM_EN = GPIO 0..3, MFP
+  J4/J5 on GPIO 4..15, DA322 UUID, soft MAC/serial. Lane order copied from the proven J1D mapping of the
+  reference and applied to all ports; J1B clock/D2 conflict between manual and reference flagged.
+  Nothing compiled yet — first Radiant run will shake out syntax and placement issues.
+
 ## 2026-09-23 — New direction: own bitstream with demosaic in the FPGA before Holoscan (JPEG XS paused)
 
 - The DA322 runs Tauro's vendor bitstream (IP 0x2511); nothing custom yet. The user wants a debayer
