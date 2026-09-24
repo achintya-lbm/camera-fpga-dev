@@ -36,6 +36,8 @@ MTU stays at 1500 until the FPGA build is known to support 4096 (`DESIGN.md` §4
 
 ## 2b. IOMMU and GPUDirect RDMA (RoCE receiver)
 
+(How the RDMA path works end to end and how it is validated: `docs/gpu_dma_path.md`.)
+
 With the Intel IOMMU in its default (DMA remapping) mode the NIC's RDMA writes into GPU memory
 (`ibv_reg_dmabuf_mr`) fault (`journalctl -k`: `DMAR: [DMA Write NO_PASID] Request device [<nic>] fault
 addr ... Present bit in first-level paging entry is clear`) and the received frames stay zero while the

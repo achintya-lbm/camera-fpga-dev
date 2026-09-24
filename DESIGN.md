@@ -217,6 +217,8 @@ conversion.
 
 ### 4.5 Receive memory path
 
+Detailed walk-through of the RDMA path (setup, per-frame flow, IOMMU, validation): `docs/gpu_dma_path.md`.
+
 hololink's `ReceiverMemoryDescriptor` first tries GPU memory exported as DMA-BUF (`cuMemAlloc` +
 `cuMemGetHandleForAddressRange`) so the NIC RDMA-writes straight into GPU VRAM (GPUDirect RDMA; needs a
 workstation/datacenter-class GPU and the open kernel modules). If that fails it falls back to

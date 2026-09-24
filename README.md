@@ -6,6 +6,8 @@ C++/CUDA host software, Python tooling and (later) the FPGA build.
 
 - `DESIGN.md` — architecture, bandwidth budget, milestones, risks
 - `TODO.md` — milestone checklists · `WORKING.md` — dated lab notebook
+- `docs/gpu_dma_path.md` — how frames reach GPU memory by RDMA (GPUDirect), step by step, and every
+  check in this repo that validates it
 - `docs/machines.md` — **what a machine needs to run this** (a Mellanox/ConnectX NIC and a compatible
   NVIDIA GPU) and the current machine inventory. Machine specifics live only there.
 
