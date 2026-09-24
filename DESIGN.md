@@ -569,6 +569,11 @@ streams through it, then switch to our bitstream.
 
 ### 12.3 Build plan (M6, replaces the previous list)
 
+**Scope decision 2026-09-24 (user):** a minimal, robust **one-camera image for CAM4 (J1D)** first —
+standard Bayer passthrough at full resolution / 30 fps — paired with the host upgrade to hololink 2.7.0.
+The four-camera variant waits. The FPGA image work lives on branch `fpga-da322` and the host upgrade on
+`host-hololink-2.7`; `main` keeps the vendor-bitstream stack so previews can be launched at any time.
+
 1. **Tooling (user):** Radiant 2026.1 on the dev box, 60-day evaluation licence (or subscription);
    `lattice_env.sh` pointed at it. Build the unmodified DA326 reference (`build.sh`) as the flow check.
 2. **Host migration** to 2.7.0 with the `hsb_lite_2510` path; `bandwidth_test` and `cam_tuner` must

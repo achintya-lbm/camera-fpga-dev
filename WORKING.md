@@ -22,6 +22,12 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
   J4/J5 on GPIO 4..15, DA322 UUID, soft MAC/serial. Lane order copied from the proven J1D mapping of the
   reference and applied to all ports; J1B clock/D2 conflict between manual and reference flagged.
   Nothing compiled yet — first Radiant run will shake out syntax and placement issues.
+- Later the same day (user): not the four-camera image — a **minimal one-camera design for CAM4/J1D** plus
+  the hololink 2.7.0 host upgrade, and both off `main`. Done: branch `fpga-da322` holds the design (now
+  shrunk to one receiver on the J1D balls, which equal the reference design's camera 0; the four-camera
+  version stays in history at 2f4cda8), `main` dropped the in-progress FPGA files, and the host upgrade
+  runs on branch `host-hololink-2.7` (agent, isolated worktree; hardware checks on roadkill0 in a
+  separate clone so the main checkout keeps serving previews).
 
 ## 2026-09-23 — New direction: own bitstream with demosaic in the FPGA before Holoscan (JPEG XS paused)
 
