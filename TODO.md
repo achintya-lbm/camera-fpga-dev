@@ -14,7 +14,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] `tools/workspace/hololink` (repository.bzl @ `6930609` + vendor patch + `package.BUILD.bazel` for core/sensors/operators) — M2
 - [x] `apps/hello_cuda` (rules_cuda, prints device name), `apps/hello_holoscan` (2-operator pipeline)
 - [x] `hsb/encode`: `nvenc_session` (dlopen, version check, AV1/HEVC session, CUDA devptr registration), `ivf` writer/reader; unit tests; `nvenc_smoke_test` (requires-gpu) verified with ffprobe
-- [x] Import vendor assets: `fpga/bitstreams/vendor/fpga_cpnx_da322_3454_2511.bit` (LFS), `tools/workspace/hololink/patches/0001-taurotech-da322-v1.2.1-pb.patch`; manifest generation documented in `fpga/bitstreams/README.md` (vendor tool, not hand-written)
+- [x] Import vendor assets: `fpga/bitstreams/vendor/fpga_cpnx_da322_3454_2511.bit` (LFS), the Tauro host patch (applied until 2026-09-24; now `tools/workspace/hololink/vendor/da322_v1.2.1-pb_e0b27cb_hsb_v2.5.0-pb6_6930609.patch`, reference only); manifest generation documented in `fpga/bitstreams/README.md` (vendor tool, not hand-written)
 - [x] `docs/bringup/host_setup.md`, `docs/bringup/flashing.md`, `docs/bandwidth.md` (matrix, results empty), `docs/decisions/ADR-0001..0005`, `README.md`
 - [x] `tools/py`: pyproject + uv-generated hashed lock; `analysis/bandwidth.py` (budget formulas) + test
 - [x] buildifier + compile_commands (helly25 fork) targets
@@ -84,7 +84,9 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [x] Pin gaps closed from the DA326 reference `.pdc` (SERDES, SFP_TX_DIS, EEPROM I2C, QSPI, GPIO) — `docs/hardware/da322.md`; J1B lane/clock discrepancy to verify on hardware
 - [ ] `[!]` Tooling (user): Radiant 2026.1 on the dev box + 60-day evaluation licence (CertusPro-NX is a subscription device per Lattice's table); build the unmodified DA326 reference as the flow check
 - [ ] Confirm Lattice IP licensing in the catalog: soft D-PHY RX ×4, 10 Gb Ethernet MAC 1.1.0, 10 Gb Ethernet PCS
-- [ ] Host migration to hololink 2.7.0 (Holoscan SDK 4.4.0 source pin, redo patches, `taurotech_da322` hololink_module from `taurotech_da326` + the vendor patch); vendor bitstream must still stream via the `hsb_lite_2510` path
+- [x] Host migration to hololink 2.7.0 (2026-09-24, branch `host-hololink-2.7`, ADR-0006): Holoscan SDK 4.4.0 / GXF 5.7.0 / rmm 26.02.00 / CCCL 3.2.0 / magic_enum 0.9.7 pins; vendor patch replaced by `patches/0001-da322-identity-and-hsb-ip-2510-compat.patch` (legacy classes get upstream's `hsb_lite_2510` behaviour, no `taurotech_da322` module); `setup_clock` sequence in `Da322Board`; `bazel build //... && bazel test //...` green, emulator loopback PASS (2 cams, 30 fps)
+  - [ ] Hardware acceptance on the vendor bitstream (test machine, separate clone `~/robotics/camera-fpga-dev-host27`): `bandwidth_test --config configs/da322_cam4.yaml --duration 20 --crc-every 1` PASS over RoCE; `cam_tuner` CAM3+CAM4 preview streams
+  - [ ] Merge `host-hololink-2.7` into `main` (user decision) and retire the 2.5.0-PB6 notes in `docs/bandwidth.md`
 - [~] Passthrough bitstream: [x] `fpga/boards/da322/da322.pdc` + `.sdc`, `fpga/rtl/da322/{FPGA_top.sv, mipi_cam_rcvr_da322.sv (DT filter), da322_user_csr.sv, HOLOLINK_def.svh}`, `fpga/radiant/{da322_build.tcl, assemble_da322.sh}` written 2026-09-24 (unbuilt: no licence yet); [ ] first Radiant run + fixes; [ ] timing closure; [ ] JTAG flash (`pgrcmd`, cable is on the dev box); [ ] host 2.7.0 enumerates it; [ ] CAM4 RAW10/RAW12 rows reproduced (CRC, fps)
 - [ ] Decisions taken 2026-09-24 (user): first custom bitstream = standard Bayer passthrough at full-res 30 fps; JTAG reflash approved; demosaic afterwards
 - [ ] `tools/bazel/radiant.bzl` (`@radiant` repo rule, `radiant_bitstream`), `fpga/radiant/build.tcl`; RTL simulation tooling (Verilator/cocotb) for our blocks

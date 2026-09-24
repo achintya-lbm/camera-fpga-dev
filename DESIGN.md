@@ -221,8 +221,8 @@ hololink's `ReceiverMemoryDescriptor` first tries GPU memory exported as DMA-BUF
 `cuMemGetHandleForAddressRange`) so the NIC RDMA-writes straight into GPU VRAM (GPUDirect RDMA; needs a
 workstation/datacenter-class GPU and the open kernel modules). If that fails it falls back to
 `cuMemHostAlloc(CU_MEMHOSTALLOC_DEVICEMAP)` pinned host memory plus one `cuMemcpyHtoDAsync` per frame
-(≈ 16 MB at 40 fps ≈ 0.6 GB/s, negligible) — but only on integrated GPUs: hololink 2.5.0-PB6's
-`RoceReceiver` always allocates the frame buffer with `cuMemAlloc` on a discrete GPU and registers it
+(≈ 16 MB at 40 fps ≈ 0.6 GB/s, negligible) — but only on integrated GPUs: hololink's `RoceReceiver`
+(2.5.0-PB6 and 2.7.0 alike) always allocates the frame buffer with `cuMemAlloc` on a discrete GPU and registers it
 with `ibv_reg_dmabuf_mr` (falling back to `ibv_reg_mr_iova`, which needs `nvidia-peermem`). There is no
 host-memory RoCE path on a dGPU host; the Linux (UDP) receiver is the copy-based alternative. The active
 path per machine is recorded in `docs/machines.md` (check: the receiver process holds one `dmabuf` fd).
@@ -244,18 +244,19 @@ The Linux (UDP) receiver remains the fallback that needs no boot option (4.95 Gb
 
 | Component | Pin (phase 1) | Why |
 |---|---|---|
-| holoscan-sensor-bridge (hololink) | commit `6930609` (tag `2.5.0-PB6`) + Tauro patch | The vendor bitstream reports HSB IP v2511; stock HSB 2.7.0 enforces `MINIMUM_HSB_IP_VERSION = 0x2602` in `src/hololink/core/data_channel.cpp` and changed the data-plane register layout (`DP_PAGE_*`, `DP_MAX_BUFF`). The board-identity strategy for DA322 lives in the vendor patch. |
-| Holoscan SDK | **3.9.0**, the `HSDK_VERSION` in PB6's `docker/build.sh`, **built from source** by `tools/workspace/holoscan` (core, ping/bayer_demosaic/format_converter operators, UCX GXF extension; holoviz next). Only NVIDIA GXF 5.1.0 is consumed as a binary (no source exists) — ADR-0005 | ABI parity with hololink operators; no prebuilt SDK packages (ADR-0001) |
+| holoscan-sensor-bridge (hololink) | release **2.7.0** + our two patches (`tools/workspace/hololink/patches`): `0001` DA322 identity + HSB IP 0x2510 compat, `0002` NVRTC include paths. Until 2026-09-24: commit `6930609` (tag `2.5.0-PB6`) + Tauro patch (now `tools/workspace/hololink/vendor/`, reference only) | Same release as the FPGA sources (`@hsb_fpga`, IP 0x2606). Stock 2.7.0 enforces `MINIMUM_HSB_IP_VERSION = 0x2602` and a new data-plane layout (`DP_PAGE_*`, `DP_MAX_BUFF`); patch `0001` folds upstream's `hsb_lite_2510` compat (old `DP_ADDRESS_*` layout, 8-bit page immediate) into the legacy classes so the vendor bitstream (0x2511) keeps streaming — ADR-0006 |
+| Holoscan SDK | **4.4.0**, the `HSDK_VERSION` in hololink 2.7.0's `docker/build.sh`, **built from source** by `tools/workspace/holoscan` (core with the pubsub libraries folded in, ping/bayer_demosaic/format_converter/holoviz operators, holoviz module, UCX GXF extension). Only NVIDIA GXF **5.7.0** is consumed as a binary (no source exists) — ADR-0005. Companion pins: rmm 26.02.00, CCCL 3.2.0 (header repo `@cccl`; the CUDA 13.0.2 toolkit's CCCL 3.0 is too old for rmm 26.02), magic_enum 0.9.7 | ABI parity with hololink 2.7.0 operators; no prebuilt SDK packages (ADR-0001, ADR-0006) |
 | SDK packaging | No containers, no `/opt` installs. rules_cuda `cuda.redist_json` downloads CUDA 13.0.2; every other library is fetched as source by `tools/workspace/<name>/repository.bzl` and built with hand-written BUILD files (UCX and hwloc through rules_foreign_cc autotools). Host provides gcc-13, the NVIDIA driver and a few graphics runtime packages (`docs/machines.md`) | reproducible on every machine (ADR-0004, ADR-0005) |
 | NVIDIA driver | R570+ with the open kernel modules; per-machine versions in `docs/machines.md` | Video Codec SDK 13.0 API needs ≥ 570 (13.1 needs ≥ 610); DMA-BUF GPUDirect needs the open modules |
 | nv-codec-headers | FFmpeg/nv-codec-headers tag `n13.0.19.1` (MIT) | NVENC API 13.0 headers; `dlopen("libnvidia-encode.so.1")` at runtime |
 | Bazel | **8.8.0** (`.bazelversion`, LTS; same line as orochi) | several BCR modules Holoscan needs (spdlog, yaml-cpp, magic_enum, cli11) still use native rules that Bazel 9 removed (ADR-0004) |
 | rules | `rules_cc 0.2.25`, `rules_cuda 0.3.0`, `rules_python 2.3.3` (Py 3.12), `rules_shell 0.8.0`, `rules_foreign_cc 0.16.0`, `googletest 1.18.0.bcr.1`, `buildifier_prebuilt 10.0.1`, `hedron_compile_commands` = helly25 fork via `git_override`; later: `verilator 5.046.bcr.5` (sim) | all bzlmod, verified on Bazel 8.8.0 |
 | Lattice Radiant (phase 3) | 2026.1 Linux (Ubuntu 22.04/24.04); LFCPNX-100 needs a **subscription** license (60-day eval available) | own FPGA build |
-| HSB (phase 3) | ≥ 2.7.x together with our own FPGA build on HSB IP 2606 | `hololink_module` device-driver model, current docs |
+| HSB (phase 3) | 2.7.0 — done 2026-09-24 on branch `host-hololink-2.7`, ahead of our own FPGA build (HSB IP 2606) | one host for the vendor image and ours (ADR-0006) |
 
-Phase-2 migration to HSB ≥ 2.7 is done only together with our own bitstream (section 12) and a
-`taurotech_da322` module modelled on upstream `hololink_module/module/taurotech_da326`.
+The migration to HSB 2.7 happened before our own bitstream (section 12.2) and without a
+`taurotech_da322` `hololink_module`: the legacy classes our code uses are still upstream's, and patch
+`0001` gives them the `hsb_lite_2510` compatibility plus the DA322 identity (ADR-0006).
 
 ---
 
@@ -418,13 +419,13 @@ camera-fpga-dev/
 │   ├── hardware/        da322.md (pins, registers), fsmgo_imx676_p22.md, imx676_modes.md, cabling_power.md
 │   ├── bandwidth.md     budget + matrix + measured results
 │   ├── bringup/         host_setup.md (ConnectX, sysctl, PTP), flashing.md (JTAG, OTA), first_light.md
-│   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path, ADR-0003 AV1/IVF, ADR-0004 Bazel 9
+│   └── decisions/       ADR-0001 host-stack pin, ADR-0002 receive memory path, ADR-0003 AV1/IVF, ADR-0004 Bazel 9, ADR-0005 Holoscan from source, ADR-0006 hololink 2.7/Holoscan 4.4 migration
 ├── tools/workspace/     one directory per external dependency: repository.bzl (pinned fetch) + package.BUILD.bazel; default.bzl = module extension; archive.bzl helper
-│   ├── holoscan/        Holoscan SDK 3.9.0 from source: package.BUILD.bazel + patches/ (proto includes, Vulkan-Hpp 1.4)
-│   ├── hololink/        HSB 2.5.0-PB6 from source: package.BUILD.bazel + patches/0001 (Tauro DA322), 0002 (fmt 11)
+│   ├── holoscan/        Holoscan SDK 4.4.0 from source: package.BUILD.bazel + patches/ (proto includes, Vulkan-Hpp detail namespace)
+│   ├── hololink/        HSB 2.7.0 from source: package.BUILD.bazel + patches/0001 (DA322 identity + IP 0x2510 compat), 0002 (NVRTC include paths); vendor/ (Tauro patch, reference)
 │   ├── rdma_core/       libibverbs headers (RoCE receiver)
 │   ├── rules_cuda/      patches for rules_cuda (device link, @cuda//:nvrtc_builtins)
-│   ├── gxf/ ucx/ rmm/ … remaining Holoscan dependencies (tools/workspace/README.md)
+│   ├── gxf/ ucx/ rmm/ cccl/ … remaining Holoscan dependencies (tools/workspace/README.md)
 │   └── nv_codec_headers/ NVENC API headers (n13.0.19.1)
 ├── tools/
 │   ├── host/            sysctl.d/52-hololink-rmem_max.conf, net_setup.sh, ptp4l/phc2sys units, hsb-ptp.conf, connectx_check.sh
@@ -496,13 +497,13 @@ excluded from the default `bazel test //...` where appropriate (`--config=nogpu`
 
 Wrappers:
 
-- `tools/workspace/holoscan/package.BUILD.bazel`: Holoscan v3.9.0 from source — `libholoscan_core.so` (core +
-  logger + profiler + GPU-resident CUDA helper), gRPC codegen for the distributed protos, the
+- `tools/workspace/holoscan/package.BUILD.bazel`: Holoscan v4.4.0 from source — `libholoscan_core.so` (core +
+  logger + profiler + GPU-resident CUDA helper + pubsub common/runtime/in_memory), gRPC codegen for the distributed protos, the
   `libgxf_ucx_holoscan.so` extension, operators as static libraries; `:holoscan` is what apps depend on.
   Build-system-only patches live in `tools/workspace/holoscan/patches/`.
-- `tools/workspace/gxf`: NVIDIA GXF 5.1.0 binary package, one `cc_library` per component mirroring its
+- `tools/workspace/gxf`: NVIDIA GXF 5.7.0 binary package, one `cc_library` per component mirroring its
   DT_NEEDED graph; `tools/workspace/{ucx,hwloc}`: autotools via rules_foreign_cc; `tools/workspace/{rmm,
-  rapids_logger,ucxx,nvtx3,eigen,dlpack}`: hand-written BUILD files (rmm/rapids_logger as shared libs
+  rapids_logger,ucxx,nvtx3,eigen,dlpack,cccl}`: hand-written BUILD files (rmm/rapids_logger as shared libs
   because GXF's rmm extension links them by SONAME). BCR modules: fmt, spdlog, yaml-cpp, magic_enum,
   cli11, tl-expected, concurrentqueue, nlohmann_json, grpc/protobuf, glfw, vulkan_headers.
   Every shared library needed at runtime is a direct link dependency of the executable, so bare-name
@@ -557,15 +558,20 @@ bitstream and put a **demosaic (debayer) block in the FPGA** ahead of the Hololi
 - Programming: JTAG via HW-USBN-2B + Tag-Connect on J2 (`docs/bringup/flashing.md` path B); the vendor
   `.bit` in `fpga/bitstreams/vendor/` is the recovery image, so reflashing is reversible.
 
-### 12.2 Host-side consequence
+### 12.2 Host-side consequence (done 2026-09-24, branch `host-hololink-2.7`, ADR-0006)
 
-Our host stack is hololink 2.5.0-PB6 + Tauro patch and expects the 0x2511 IP. A bitstream built from
-the 2.7.0 IP identifies as 0x2606, which the 2.5.0 host rejects; the 2.7.0 host requires
-`hsb_ip_version ≥ 0x2602` **but** ships a `hsb_lite_2510` module that accepts FPGAs back to 0x2510,
-i.e. the vendor image too. So the order is: migrate the host to hololink 2.7.0 first (Holoscan SDK
-source pin 3.9 → 4.4.0, redo our three hololink patches, write a `taurotech_da322` module modelled on
-upstream `taurotech_da326` + the vendor patch's board specifics), verify the vendor bitstream still
-streams through it, then switch to our bitstream.
+A bitstream built from the 2.7.0 IP identifies as 0x2606, which the 2.5.0-PB6 host rejected, so the
+host moved first: hololink **2.7.0** + Holoscan SDK **4.4.0** (GXF 5.7.0, rmm 26.02, CCCL 3.2,
+magic_enum 0.9.7). Instead of a `taurotech_da322` `hololink_module`, patch
+`tools/workspace/hololink/patches/0001-da322-identity-and-hsb-ip-2510-compat.patch` gives the legacy
+`DataChannel`/receiver classes the same 0x2510 compatibility as upstream's `hsb_lite_2510` module and
+adds the DA322 identity, so **one host binary drives both images**: the vendor bitstream (0x2511 →
+`DP_ADDRESS_0..3`/`DP_BUFFER_MASK`, ≤ 4 pages, immediate `page[7:0] | psn[31:8]`) and ours (0x2606 →
+`DP_PAGE_LSB/MSB/INC`, `DP_MAX_BUFF`, immediate `page[11:0] | psn[31:12]`), selected by the enumerated
+`hsb_ip_version`. The vendor's `setup_clock()` sequence lives in
+`Da322Board::EnableClocksAndCameraPower()`. Acceptance on the vendor bitstream: WORKING.md 2026-09-24
+(`bandwidth_test` CAM4 over RoCE, two-camera `cam_tuner` preview). hololink's emulator implements the
+0x2602 layout, so `tools/emulator/loopback.sh` covers the new-layout path with DA322 identity.
 
 ### 12.3 Build plan (M6, replaces the previous list)
 

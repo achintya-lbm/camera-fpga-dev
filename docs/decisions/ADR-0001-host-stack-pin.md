@@ -1,6 +1,6 @@
 # ADR-0001 — Host stack pin: hololink 2.5.0-PB6 + Holoscan SDK 3.9.0 (built from source)
 
-Date: 2026-09-18. Status: accepted.
+Date: 2026-09-18. Status: superseded by ADR-0006 (2026-09-24: hololink 2.7.0 + Holoscan SDK 4.4.0 on branch `host-hololink-2.7`).
 
 ## Context
 The DA322 ships with bitstream `fpga_cpnx_da322_3454_2511.bit` (HSB IP v2511) and a patch against

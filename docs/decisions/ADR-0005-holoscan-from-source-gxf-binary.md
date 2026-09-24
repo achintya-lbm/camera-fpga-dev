@@ -31,3 +31,9 @@ public source).
   need new `tools/workspace` entries.
 - Runtime linking rule: every shared library Holoscan `dlopen`s by name is a direct link dependency of
   the executable, so bare-name loads resolve against already-loaded libraries.
+
+2026-09-24 (ADR-0006): the same scheme now builds Holoscan **4.4.0** with GXF **5.7.0**
+(`gxf_5.7.0_20260515_6a50c8f1a_holoscan-sdk-cu13_x86_64.tar.gz`; adds `libgxf_pubsub.so`), rmm 26.02.00,
+CCCL 3.2.0 as a header-only repository (rmm 26.02 needs CCCL ≥ 3.1; the CUDA 13.0.2 toolkit bundles 3.0,
+so `@cccl` replaces `@cuda//:libcudacxx` wherever rmm headers are reached) and magic_enum 0.9.7. The
+Holoscan pubsub libraries are folded into `libholoscan_core.so`; the optional Fast DDS transport is not built.
