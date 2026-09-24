@@ -1,13 +1,13 @@
-"""magic_enum 0.9.3 — Holoscan's and GXF's pin. Kept at 0.9.3 because GXF headers include
-`<magic_enum.hpp>` from the top-level include dir; 0.9.6+ moved the headers under
-`include/magic_enum/`.
+"""magic_enum 0.9.7 — Holoscan 4.4.0's pin (cmake/deps/magic_enum.cmake). GXF 5.7 and
+Holoscan 4.x include `<magic_enum/magic_enum.hpp>`, the layout introduced in 0.9.6
+(headers under `include/magic_enum/`).
 """
 
 load("//tools/workspace:archive.bzl", "archive_repository")
 
-_VERSION = "0.9.3"
+_VERSION = "0.9.7"
 
-_SHA256 = "3cadd6a05f1bffc5141e5e731c46b2b73c2dbff025e723c8abaa659e0a24f072"
+_SHA256 = "b403d3dad4ef542fdc3024fa37d3a6cedb4ad33c72e31b6d9bab89dcaf69edf7"
 
 def magic_enum_repository(name):
     archive_repository(

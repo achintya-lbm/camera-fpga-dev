@@ -1,5 +1,5 @@
 # -*- mode: bazel -*-
-# Targets for @gxf (NVIDIA GXF 5.1.0 binary package). One cc_library per GXF
+# Targets for @gxf (NVIDIA GXF 5.7.0 binary package). One cc_library per GXF
 # component; deps mirror each library's DT_NEEDED and lib/cmake/GXF/*Targets.cmake.
 # Every component's headers live under include/ (gxf/<component>/..., common/...).
 load("@rules_cc//cc:defs.bzl", "cc_library")
@@ -89,6 +89,18 @@ cc_library(
         ":serialization",
         ":std",
         "@ucx",
+    ],
+)
+
+# libgxf_pubsub.so (new in GXF 5.7): the pub/sub network context Holoscan 4.x's
+# executor loads at start-up alongside libgxf_ucx.so.
+cc_library(
+    name = "pubsub",
+    srcs = ["lib/gxf/pubsub/libgxf_pubsub.so"],
+    deps = [
+        ":core",
+        ":std",
+        "@cuda//:cuda_runtime",
     ],
 )
 

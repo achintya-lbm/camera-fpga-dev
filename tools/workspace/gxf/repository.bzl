@@ -1,4 +1,4 @@
-"""NVIDIA GXF (Graph Execution Framework) 5.1.0 — the runtime under Holoscan.
+"""NVIDIA GXF (Graph Execution Framework) 5.7.0 — the runtime under Holoscan 4.4.0.
 
 GXF is distributed by NVIDIA only as a binary package (libgxf_*.so + headers);
 there is no source release. This is the one prebuilt component in the Holoscan
@@ -6,11 +6,11 @@ source build (decision recorded in docs/decisions/ADR-0005). The URL is the one
 Holoscan's own Dockerfile uses (ARG GXF_CU13_VERSION).
 """
 
-_VERSION = "5.1.0_20251114_0652b7b15_holoscan-sdk-cu13"
+_VERSION = "5.7.0_20260515_6a50c8f1a_holoscan-sdk-cu13"
 
 _BASENAME = "gxf_{}_x86_64.tar.gz".format(_VERSION)
 
-_SHA256 = "cbf6daff5374e34841fc51fe9ee9aef5c7fe994bec5a4681a3cbb24fcad63cc5"
+_SHA256 = "cd0403020cae42338c4fe7cbc9716e21e2975f4351117af7365be7200966d012"
 
 def _impl(repo_ctx):
     if repo_ctx.os.arch != "amd64":

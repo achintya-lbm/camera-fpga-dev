@@ -1,11 +1,14 @@
 load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 
 # -*- mode: bazel -*-
-# Holoscan SDK v3.9.0 built from source (repository.bzl). Mirrors src/CMakeLists.txt,
+# Holoscan SDK v4.4.0 built from source (repository.bzl). Mirrors src/CMakeLists.txt,
 # src/operators/*/CMakeLists.txt and gxf_extensions/ucx/CMakeLists.txt for the parts
-# this project uses: core (with logger, profiler, spdlog_logger and the GPU-resident
-# CUDA helper folded into one libholoscan_core.so), the ping/bayer_demosaic/
-# format_converter operators and the UCX GXF extension Holoscan loads at start-up.
+# this project uses: core (with logger, profiler, spdlog_logger, the GPU-resident
+# CUDA helper and the pubsub_common/pubsub_runtime/pubsub_in_memory libraries folded
+# into one libholoscan_core.so), the ping/bayer_demosaic/format_converter operators
+# and the UCX GXF extension Holoscan loads at start-up. Not built: the optional
+# holo_ipc module and its Fast DDS pub/sub transport (HOLOSCAN_BUILD_IPC=OFF),
+# pose_tree, inference, data loggers, Python.
 #
 # Shared-library layout matters at runtime: libgxf_ucx_holoscan.so is dlopen()ed by
 # name by holoscan::core, so core must be a real shared object (one copy of its
@@ -18,7 +21,7 @@ load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 package(default_visibility = ["//visibility:public"])
 
-HOLOSCAN_VERSION = "3.9.0"
+HOLOSCAN_VERSION = "4.4.0"
 
 # Upstream's holoscan_security_flags (BuildSecurityFlags.cmake) minus -Werror.
 SECURITY_COPTS = [
@@ -57,6 +60,7 @@ cc_library(
         "@gxf//:app",
         "@gxf//:core",
         "@gxf//:cuda",
+        "@gxf//:pubsub",
         "@gxf//:rmm",
         "@gxf//:serialization",
         "@gxf//:std",
@@ -123,7 +127,12 @@ cuda_library(
 )
 
 # ---------------------------------------------------------------------------
-# libholoscan_core.so — core + logger + profiler + spdlog_logger (src/CMakeLists.txt).
+# libholoscan_core.so — core + logger + profiler + spdlog_logger + pubsub_common +
+# pubsub_runtime + pubsub_in_memory (src/CMakeLists.txt). Upstream builds the three
+# pubsub libraries as separate shared objects that link core; holoscan.hpp includes
+# their headers, so every application needs them and one library is simpler.
+# pending_export_condition.cpp and src/pubsub/fastdds/** belong to the Fast DDS
+# transport (HOLOSCAN_BUILD_IPC) and are left out.
 # ---------------------------------------------------------------------------
 CORE_SRCS = glob(["src/core/**/*.cpp"]) + [
     "src/common/logger/spdlog_logger.cpp",
@@ -132,6 +141,13 @@ CORE_SRCS = glob(["src/core/**/*.cpp"]) + [
     "src/utils/cuda_stream_handler.cpp",
     "src/utils/operator_runner.cpp",
     "src/utils/cuda/buffer.cpp",
+    "src/pubsub/common/holoscan_component_payloads.cpp",
+    "src/pubsub/common/pubsub_context_utils.cpp",
+    "src/pubsub/common/sidecar_dispatch_queue.cpp",
+    "src/pubsub/runtime/conditions/publisher_available.cpp",
+    "src/pubsub/runtime/conditions/subscriber_available.cpp",
+    "src/pubsub/in_memory/network_contexts/gxf/in_memory_pubsub_network_context.cpp",
+    "src/pubsub/in_memory/network_contexts/gxf/in_memory_pubsub_session.cpp",
 ]
 
 cc_library(
@@ -144,6 +160,9 @@ cc_library(
             "src/common/**/*.h",
             "src/logger/*.hpp",
             "src/profiler/*.hpp",
+            "src/pubsub/common/**/*.hpp",
+            "src/pubsub/in_memory/**/*.hpp",
+            "src/pubsub/runtime/**/*.hpp",
             "src/utils/**/*.hpp",
         ],
         allow_empty = True,

@@ -577,7 +577,7 @@
   "moduleExtensions": {
     "//tools/workspace:default.bzl%camera_fpga_dev_repositories": {
       "general": {
-        "bzlTransitiveDigest": "eyVl4F30GSAK2MyfHUZyCUcmDPmbQllxhX913LOxtaM=",
+        "bzlTransitiveDigest": "cAQXTHNCiBV9o4Pm4dR68Ffs8jINwGPxXmX/ZDvb200=",
         "usagesDigest": "+xLuTlbOpdT/T3i58oTtBwPUU6aSra9dTZWBBXQqPac=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
@@ -695,10 +695,10 @@
             "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
             "attributes": {
               "urls": [
-                "https://github.com/Neargye/magic_enum/archive/refs/tags/v0.9.3.tar.gz"
+                "https://github.com/Neargye/magic_enum/archive/refs/tags/v0.9.7.tar.gz"
               ],
-              "sha256": "3cadd6a05f1bffc5141e5e731c46b2b73c2dbff025e723c8abaa659e0a24f072",
-              "strip_prefix": "magic_enum-0.9.3",
+              "sha256": "b403d3dad4ef542fdc3024fa37d3a6cedb4ad33c72e31b6d9bab89dcaf69edf7",
+              "strip_prefix": "magic_enum-0.9.7",
               "build_file": "@@//tools/workspace/magic_enum:package.BUILD.bazel"
             }
           },

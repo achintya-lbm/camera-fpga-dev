@@ -1,9 +1,9 @@
-"""Holoscan SDK v3.9.0 built from source.
+"""Holoscan SDK v4.4.0 built from source.
 
 Fetches the GitHub release tarball and attaches package.BUILD.bazel, which builds
 holoscan::core, the bayer_demosaic / holoviz / format_converter operators and the
 holoviz module with hand-written Bazel rules (no Python, no inference, no
-distributed/UCX support). Version 3.9.0 is the SDK hololink 2.5.0-PB6 builds
+distributed/UCX support). Version 4.4.0 is the SDK hololink 2.7.0 builds
 against (docs/decisions/ADR-0001).
 
 NVIDIA GXF, which holoscan::core links, exists only as a binary package; it is
@@ -13,10 +13,10 @@ fetched separately by //tools/workspace/gxf.
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "patch")
 load("//tools/workspace:mirrors.bzl", "MIRRORS")
 
-_TAG = "v3.9.0"
+_TAG = "v4.4.0"
 
-# sha256 of https://github.com/nvidia-holoscan/holoscan-sdk/archive/refs/tags/v3.9.0.tar.gz
-_SHA256 = "e52ef7bd2a28f8344fef80ff8341f1b03fd20fc2affd3d5fa5ab41cee40aaf7d"
+# sha256 of https://github.com/nvidia-holoscan/holoscan-sdk/archive/refs/tags/v4.4.0.tar.gz
+_SHA256 = "52a7750cf7123fa204d810fe0d145b156556e540bc5de063d3339aacd9757fc5"
 
 def _impl(repo_ctx):
     repo_ctx.download_and_extract(
