@@ -24,3 +24,6 @@ __pycache__/
 
 # ISO/IEC 21122-4 conformance vectors and other licensed test data (fetched, never committed)
 compression/testdata/
+
+# Captures pulled from the test machine (docs/gpu_dma_path.md, samples/README.txt): local only, never committed
+samples/
