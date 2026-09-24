@@ -1,0 +1,332 @@
+--- a/src/hololink/core/hololink.hpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/core/hololink.hpp	2026-09-24 19:41:20.195278289 -0400
+@@ -153,6 +153,7 @@
+ constexpr uint32_t HOLOLINK_NANO_BOARD_ID = 5u;
+ constexpr uint32_t LEOPARD_EAGLE_BOARD_ID = 7u;
+ constexpr uint32_t TT_DA326_BOARD_ID = 10u;
++constexpr uint32_t TT_DA322_BOARD_ID = 9u; // TauroTech DA322 (vendor patch da322_v1.2.1-pb)
+ 
+ // Other constants
+ constexpr uint32_t METADATA_SIZE = 128;
+--- a/src/hololink/core/enumerator.hpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/core/enumerator.hpp	2026-09-24 19:41:20.195413453 -0400
+@@ -45,6 +45,7 @@
+ const std::string MICROCHIP_POLARFIRE_UUID = "ed6a9292-debf-40ac-b603-a24e025309c1";
+ const std::string LEOPARD_EAGLE_UUID = "f1627640-b4dc-48af-a360-c55b09b3d230";
+ const std::string TT_DA326_UUID = "9957a9ac-36b5-4518-83ec-5d514aecb750";
++const std::string TT_DA322_UUID = "2b6485ba-a2c4-4b58-aee2-b4d5e623927e";
+ 
+ /**
+  * Strategy that adjusts enumeration data based on FPGA UUID.
+--- a/src/hololink/core/enumerator.cpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/core/enumerator.cpp	2026-09-24 19:41:20.195572704 -0400
+@@ -167,6 +167,8 @@
+             metadata["fpga_uuid"] = LEOPARD_EAGLE_UUID;
+         } else if (board_id == TT_DA326_BOARD_ID) {
+             metadata["fpga_uuid"] = TT_DA326_UUID;
++        } else if (board_id == TT_DA322_BOARD_ID) {
++            metadata["fpga_uuid"] = TT_DA322_UUID;
+         }
+     }
+ 
+@@ -721,6 +723,20 @@
+     tt_da326_enumeration_strategy->block_enable(false);
+     (*strategies)[TT_DA326_UUID] = tt_da326_enumeration_strategy;
+ 
++    // TauroTech DA322: four MIPI camera ports, one 10G data plane (vendor patch
++    // da322_v1.2.1-pb against HSB 2.5.0-PB6; the vendor bitstream reports
++    // hsb_ip_version 0x2511 and enumerates with bootp v1).
++    Metadata tt_da322_metadata;
++    tt_da322_metadata["board_description"] = "TauroTech DA322";
++    tt_da322_metadata["gpio_pin_count"] = 32;
++    unsigned tt_da322_total_sensors = 4;
++    unsigned tt_da322_total_dataplanes = 1;
++    unsigned tt_da322_sifs_per_sensor = 1;
++    auto tt_da322_enumeration_strategy = std::make_shared<BasicEnumerationStrategy>(tt_da322_metadata,
++        tt_da322_total_sensors, tt_da322_total_dataplanes, tt_da322_sifs_per_sensor);
++    tt_da322_enumeration_strategy->block_enable(false);
++    (*strategies)[TT_DA322_UUID] = tt_da322_enumeration_strategy;
++
+     done = true;
+ }
+ 
+--- a/src/hololink/core/data_channel.cpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/core/data_channel.cpp	2026-09-24 19:41:20.195706706 -0400
+@@ -31,7 +31,29 @@
+ // supported on FPGAs that are this version or newer; configure_roce() rejects
+ // anything older. Revision-specific subclasses that understand an older layout
+ // override minimum_hsb_ip_version(). Control-plane-only use isn't tested.
+-constexpr int64_t MINIMUM_HSB_IP_VERSION = 0x2602;
++//
++// Compat (camera-fpga-dev): FPGAs from 0x2510 up to (but excluding)
++// DP_PAGE_LAYOUT_HSB_IP_VERSION use the older per-page address registers
++// (DP_ADDRESS_0..3 + DP_BUFFER_MASK, at most 4 pages, 78-byte RoCE header),
++// exactly what upstream's hololink_module/module/core/hsb_lite_2510_data_channel.hpp
++// programs. configure_roce()/unconfigure() below select the layout from the
++// enumerated hsb_ip_version, so the legacy classes keep working with such
++// FPGAs without the hololink_module framework.
++constexpr int64_t MINIMUM_HSB_IP_VERSION = 0x2510;
++constexpr int64_t DP_PAGE_LAYOUT_HSB_IP_VERSION = 0x2602;
++
++// Data-plane registers of FPGAs older than DP_PAGE_LAYOUT_HSB_IP_VERSION.
++constexpr uint32_t DP_ADDRESS_0 = 0x08;
++constexpr uint32_t DP_ADDRESS_1 = 0x0C;
++constexpr uint32_t DP_ADDRESS_2 = 0x10;
++constexpr uint32_t DP_ADDRESS_3 = 0x14;
++constexpr uint32_t DP_BUFFER_MASK = 0x1C; // each bit enables a buffer
++
++static bool legacy_dp_layout(const Metadata& enumeration_metadata)
++{
++    auto hsb_ip_version = enumeration_metadata.get<int64_t>("hsb_ip_version");
++    return hsb_ip_version && (hsb_ip_version.value() < DP_PAGE_LAYOUT_HSB_IP_VERSION);
++}
+ 
+ #ifndef HOLOLINK_ROCE_USE_GPU_VRAM
+ #define HOLOLINK_ROCE_USE_GPU_VRAM 1
+@@ -246,8 +268,10 @@
+         throw std::runtime_error(fmt::format("page_size={:#x} must be at least {:#x} bytes.", page_size, aligned_frame_with_metadata));
+     }
+ 
+-    if (pages > 4096) {
+-        throw std::runtime_error(fmt::format("pages={} can be at most 4096.", pages));
++    const bool legacy = legacy_dp_layout(enumeration_metadata_);
++    const unsigned max_pages = legacy ? 4 : 4096;
++    if (pages > max_pages) {
++        throw std::runtime_error(fmt::format("pages={} can be at most {}.", pages, max_pages));
+     }
+     if (pages < 1) {
+         throw std::runtime_error(fmt::format("pages={} must be at least 1.", pages));
+@@ -262,6 +286,22 @@
+     // sure we're not transmitting anything while we update.
+     hololink_->and_uint32(hif_address_ + DP_VP_MASK, ~vp_mask_);
+ 
++    if (legacy) {
++        // Pre-0x2602 memory map (hsb_lite_2510): one 128-byte-page address per buffer.
++        const uint32_t header_size = 78;
++        configure_common(frame_size, header_size, local_data_port);
++        hololink_->write_uint32(vp_address_ + DP_QP, qp_number_);
++        hololink_->write_uint32(vp_address_ + DP_RKEY, rkey_);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_0, (pages > 0) ? PAGES(frame_memory) : 0);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_1, (pages > 1) ? PAGES(frame_memory + page_size) : 0);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_2, (pages > 2) ? PAGES(frame_memory + (page_size * 2)) : 0);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_3, (pages > 3) ? PAGES(frame_memory + (page_size * 3)) : 0);
++        hololink_->write_uint32(vp_address_ + DP_BUFFER_MASK, (1 << pages) - 1);
++        // Restore the DP_VP_MASK to re-enable the sensor.
++        hololink_->or_uint32(hif_address_ + DP_VP_MASK, vp_mask_);
++        return;
++    }
++
+     const uint32_t roce_overhead = 74;
+     const uint32_t frame_msb = frame_memory >> 32;
+     const uint32_t frame_lsb = frame_memory & 0xFFFFFFFF;
+@@ -325,13 +365,24 @@
+     // Let any in-transit data flush out.
+     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+     // Clear the ROCE configuration.
++    const bool legacy = legacy_dp_layout(enumeration_metadata_);
++    if (legacy) {
++        hololink_->write_uint32(vp_address_ + DP_BUFFER_MASK, 0);
++    }
+     hololink_->write_uint32(vp_address_ + DP_BUFFER_LENGTH, 0);
+     hololink_->write_uint32(vp_address_ + DP_QP, 0);
+     hololink_->write_uint32(vp_address_ + DP_RKEY, 0);
+-    hololink_->write_uint32(vp_address_ + DP_PAGE_LSB, 0);
+-    hololink_->write_uint32(vp_address_ + DP_PAGE_MSB, 0);
+-    hololink_->write_uint32(vp_address_ + DP_PAGE_INC, 0);
+-    hololink_->write_uint32(vp_address_ + DP_MAX_BUFF, 0);
++    if (legacy) {
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_0, 0);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_1, 0);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_2, 0);
++        hololink_->write_uint32(vp_address_ + DP_ADDRESS_3, 0);
++    } else {
++        hololink_->write_uint32(vp_address_ + DP_PAGE_LSB, 0);
++        hololink_->write_uint32(vp_address_ + DP_PAGE_MSB, 0);
++        hololink_->write_uint32(vp_address_ + DP_PAGE_INC, 0);
++        hololink_->write_uint32(vp_address_ + DP_MAX_BUFF, 0);
++    }
+     hololink_->write_uint32(vp_address_ + DP_HOST_MAC_LOW, 0);
+     hololink_->write_uint32(vp_address_ + DP_HOST_MAC_HIGH, 0);
+     hololink_->write_uint32(vp_address_ + DP_HOST_IP, 0);
+--- a/src/hololink/operators/roce_receiver/roce_receiver.hpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/operators/roce_receiver/roce_receiver.hpp	2026-09-24 19:41:20.195848050 -0400
+@@ -57,6 +57,10 @@
+ /**
+  *
+  */
++// FPGAs older than this encode the RDMA immediate as page[7:0] | psn[31:8]
++// (see Hsb2510RoceReceiver); newer ones use page[11:0] | psn[31:12].
++constexpr int64_t ROCE_IMM_LAYOUT_HSB_IP_VERSION = 0x2603;
++
+ class RoceReceiver {
+ public:
+     /**
+@@ -183,6 +187,31 @@
+     std::mutex& get_lock(); // Ensures reentrency protection for ibv calls.
+ };
+ 
++/**
++ * RoceReceiver for FPGAs with hsb_ip_version < ROCE_IMM_LAYOUT_HSB_IP_VERSION
++ * (e.g. the 0x2511 TauroTech DA322 image). Same immediate-data decoding as
++ * upstream hololink_module/module/core/hsb_lite_2510_roce_receiver.hpp.
++ */
++class Hsb2510RoceReceiver : public RoceReceiver {
++public:
++    using RoceReceiver::RoceReceiver;
++
++    uint32_t page_from_imm(uint32_t imm_data) override
++    {
++        return imm_data & 0xFF;
++    }
++
++    uint32_t psn_from_imm(uint32_t imm_data) override
++    {
++        return (imm_data >> 8) & 0xFFFFFF;
++    }
++
++    bool same_psn(uint32_t frame_metadata_psn, uint32_t received_psn) override
++    {
++        return (frame_metadata_psn == received_psn);
++    }
++};
++
+ } // namespace hololink::operators
+ 
+ #endif /* SRC_HOLOLINK_OPERATORS_ROCE_RECEIVER_ROCE_RECEIVER */
+--- a/src/hololink/operators/roce_receiver/roce_receiver_op.cpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/operators/roce_receiver/roce_receiver_op.cpp	2026-09-24 19:41:20.195903914 -0400
+@@ -107,18 +107,37 @@
+     const std::string& peer_ip = hololink_channel_->peer_ip();
+     HSB_LOG_INFO(
+         "ibv_name_={} ibv_port_={} peer_ip={}", ibv_name_.get(), ibv_port_.get(), peer_ip);
+-    receiver_.reset(new RoceReceiver(
+-        ibv_name_.get().c_str(),
+-        ibv_port_.get(),
+-        frame_memory_->get(),
+-        buffer_size,
+-        frame_size_.get(),
+-        received_frame_size,
+-        pages_.get(),
+-        metadata_offset_,
+-        peer_ip.c_str(),
+-        queue_size_.get(),
+-        frame_memory_->get_host_ptr()));
++    // FPGAs older than ROCE_IMM_LAYOUT_HSB_IP_VERSION encode the immediate data differently.
++    const auto hsb_ip_version = hololink_channel_->enumeration_metadata().get<int64_t>("hsb_ip_version");
++    if (hsb_ip_version && hsb_ip_version.value() < ROCE_IMM_LAYOUT_HSB_IP_VERSION) {
++        HSB_LOG_INFO("hsb_ip_version={:#x}: using the pre-{:#x} immediate-data layout", hsb_ip_version.value(),
++            ROCE_IMM_LAYOUT_HSB_IP_VERSION);
++        receiver_.reset(new Hsb2510RoceReceiver(
++            ibv_name_.get().c_str(),
++            ibv_port_.get(),
++            frame_memory_->get(),
++            buffer_size,
++            frame_size_.get(),
++            received_frame_size,
++            pages_.get(),
++            metadata_offset_,
++            peer_ip.c_str(),
++            queue_size_.get(),
++            frame_memory_->get_host_ptr()));
++    } else {
++        receiver_.reset(new RoceReceiver(
++            ibv_name_.get().c_str(),
++            ibv_port_.get(),
++            frame_memory_->get(),
++            buffer_size,
++            frame_size_.get(),
++            received_frame_size,
++            pages_.get(),
++            metadata_offset_,
++            peer_ip.c_str(),
++            queue_size_.get(),
++            frame_memory_->get_host_ptr()));
++    }
+     receiver_->set_frame_ready([this](const RoceReceiver&) {
+         this->frame_ready();
+     });
+--- a/src/hololink/operators/linux_receiver/linux_receiver.hpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/operators/linux_receiver/linux_receiver.hpp	2026-09-24 19:41:20.196023074 -0400
+@@ -54,6 +54,9 @@
+ 
+ class LinuxReceiverDescriptor;
+ 
++// FPGAs older than this encode the page as imm[7:0] (see Hsb2510LinuxReceiver).
++constexpr int64_t LINUX_IMM_LAYOUT_HSB_IP_VERSION = 0x2603;
++
+ class LinuxReceiver {
+ public:
+     LinuxReceiver(CUdeviceptr cu_buffer,
+@@ -64,7 +67,7 @@
+         uint64_t received_address_offset,
+         unsigned queue_size);
+ 
+-    ~LinuxReceiver();
++    virtual ~LinuxReceiver();
+ 
+     /**
+      * Runs perpetually, looking for packets received
+@@ -131,6 +134,20 @@
+     ExtendedCounter<uint32_t, uint16_t> frame_number_;
+ };
+ 
++/**
++ * LinuxReceiver for FPGAs with hsb_ip_version < LINUX_IMM_LAYOUT_HSB_IP_VERSION
++ * (upstream hololink_module/module/core/hsb_lite_2510_linux_receiver.hpp).
++ */
++class Hsb2510LinuxReceiver : public LinuxReceiver {
++public:
++    using LinuxReceiver::LinuxReceiver;
++
++    uint32_t page_from_imm(uint32_t imm_data) override
++    {
++        return imm_data & 0xFF;
++    }
++};
++
+ } // namespace hololink::operators
+ 
+ #endif /* SRC_HOLOLINK_OPERATORS_LINUX_RECEIVER_LINUX_RECEIVER */
+--- a/src/hololink/operators/linux_receiver/linux_receiver_op.cpp	2026-07-16 22:35:11.000000000 -0400
++++ b/src/hololink/operators/linux_receiver/linux_receiver_op.cpp	2026-09-24 19:41:20.196077416 -0400
+@@ -125,15 +125,31 @@
+     size_t buffer_size = hololink::core::round_up(received_frame_size * pages_.get(), getpagesize());
+     frame_memory_ = std::make_shared<hololink::ReceiverMemoryDescriptor>(frame_context_, buffer_size);
+ 
+-    receiver_.reset(new LinuxReceiver(
+-        frame_memory_->get(),
+-        buffer_size,
+-        // each page needs to include all space in order to capture the FrameMetadata
+-        received_frame_size,
+-        pages_.get(),
+-        data_socket_.get(),
+-        received_address_offset(),
+-        queue_size_.get()));
++    // FPGAs older than LINUX_IMM_LAYOUT_HSB_IP_VERSION encode the immediate data differently.
++    const auto hsb_ip_version = hololink_channel_->enumeration_metadata().get<int64_t>("hsb_ip_version");
++    if (hsb_ip_version && hsb_ip_version.value() < LINUX_IMM_LAYOUT_HSB_IP_VERSION) {
++        HSB_LOG_INFO("hsb_ip_version={:#x}: using the pre-{:#x} immediate-data layout", hsb_ip_version.value(),
++            LINUX_IMM_LAYOUT_HSB_IP_VERSION);
++        receiver_.reset(new Hsb2510LinuxReceiver(
++            frame_memory_->get(),
++            buffer_size,
++            // each page needs to include all space in order to capture the FrameMetadata
++            received_frame_size,
++            pages_.get(),
++            data_socket_.get(),
++            received_address_offset(),
++            queue_size_.get()));
++    } else {
++        receiver_.reset(new LinuxReceiver(
++            frame_memory_->get(),
++            buffer_size,
++            // each page needs to include all space in order to capture the FrameMetadata
++            received_frame_size,
++            pages_.get(),
++            data_socket_.get(),
++            received_address_offset(),
++            queue_size_.get()));
++    }
+ 
+     receiver_->set_frame_ready([this](const LinuxReceiver&) {
+         this->frame_ready();

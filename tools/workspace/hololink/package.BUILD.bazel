@@ -1,8 +1,8 @@
 # -*- mode: bazel -*-
-# hololink 2.5.0-PB6 (+ Tauro DA322 patch) built from source. Mirrors the CMake targets
-# under src/hololink/{core,common,sensors,operators,emulation}; Python bindings, tests,
-# examples and the tools directory are not built. Include root is `src`
-# (`#include <hololink/core/hololink.hpp>`).
+# hololink 2.7.0 (+ our DA322/compat and NVRTC patches) built from source. Mirrors the
+# CMake targets under src/hololink/{core,common,sensors,operators,emulation}; Python
+# bindings, tests, examples, the hololink_module framework and the tools directory are
+# not built. Include root is `src` (`#include <hololink/core/hololink.hpp>`).
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -12,23 +12,23 @@ COPTS = [
     "-Wno-deprecated-declarations",
 ]
 
-# hololink::core — control plane (ECB/BOOTP), DataChannel, I2C/SPI/GPIO, metadata.
+# hololink::core — control plane (ECB/BOOTP), DataChannel, I2C/SPI/GPIO, metadata,
+# packetizer programs, reactor. (The MPSB sensor code of 2.5.0-PB6 is gone upstream.)
+# data_channel.hpp includes common/cuda_helper.hpp (header-only CUDA RAII types), which in
+# turn includes core/nullable_pointer.hpp, so that header belongs to core here.
 cc_library(
     name = "core",
-    srcs = glob([
-        "src/hololink/core/*.cpp",
-        "src/hololink/core/mpsb/**/*.cpp",
-        "src/hololink/core/mpsb/**/*.c",
-    ]),
-    hdrs = glob([
-        "src/hololink/core/*.hpp",
-        "src/hololink/core/mpsb/**/*.h",
-    ]),
+    srcs = glob(["src/hololink/core/*.cpp"]),
+    hdrs = glob(["src/hololink/core/*.hpp"]) + ["src/hololink/common/cuda_helper.hpp"],
     copts = COPTS,
     defines = ["FMT_HEADER_ONLY=1"],
     includes = ["src"],
     linkopts = ["-lpthread"],
-    deps = ["@fmt"],
+    deps = [
+        "@cuda",  # data_channel.hpp: <cuda.h>; cuda_helper.hpp: <vector_types.h>
+        "@fmt",
+        "@nvtx3",  # nvtx_trace.hpp
+    ],
 )
 
 # hololink::sensor (Leopard I2C expander helper) and the camera sensor base classes.
@@ -70,12 +70,19 @@ cc_library(
 )
 
 # hololink::common — NVRTC kernel launcher, CLI arg helper, ibverbs device listing,
-# Holoviz/ImGui renderer helper.
+# Holoviz/ImGui renderer helper. HAS_IBVERBS enables infiniband_devices() (tools.cpp),
+# as HOLOLINK_BUILD_ROCE does in CMake.
 cc_library(
     name = "common",
     srcs = glob(["src/hololink/common/*.cpp"]),
-    hdrs = glob(["src/hololink/common/*.hpp"]),
+    # cuda_error.hpp (cuFFT/NVRTC error helpers) is only used by the signal-processing
+    # operators we do not build.
+    hdrs = glob(
+        ["src/hololink/common/*.hpp"],
+        exclude = ["src/hololink/common/cuda_error.hpp"],
+    ),
     copts = COPTS,
+    local_defines = ["HAS_IBVERBS=1"],
     deps = [
         ":core",
         "@cuda",
@@ -103,16 +110,19 @@ cc_library(
     ],
 )
 
+# Plain-UDP receiver. HOLOLINK_HAVE_IBV_OPCODE (set by CMake for RoCE-enabled builds)
+# makes it decode the RoCE opcode names from <infiniband/opcode.h>.
 cc_library(
     name = "linux_receiver",
     srcs = ["src/hololink/operators/linux_receiver/linux_receiver.cpp"],
     hdrs = ["src/hololink/operators/linux_receiver/linux_receiver.hpp"],
     copts = COPTS,
+    local_defines = ["HOLOLINK_HAVE_IBV_OPCODE=1"],
     deps = [
         ":base_receiver_op",
         ":core",
         "@cuda",
-        "@rdma_core//:ibverbs_headers",  # <infiniband/opcode.h>
+        "@rdma_core//:ibverbs_headers",
     ],
 )
 
@@ -182,39 +192,51 @@ cc_library(
 
 # ---------------------------------------------------------------------------
 # HSB emulator: a software Hololink device (BOOTP/ECB control plane, I2C peripherals,
-# UDP data plane in the real wire format). Used for no-FPGA tests (apps/emu_source).
+# RoCEv2-format UDP and COE data planes). Used for no-FPGA tests (apps/emu_source).
+# Upstream splits it into emulation_common (src/common), emulation_host (src/linux)
+# and the roce/coe transport libraries; here one target with the Linux platform.
+# SEPARATE_FRAMEMETADATA_PACKET=0 is cmake/targets/linux.cmake's default (frame
+# metadata embedded in the last payload packet, like the FPGA).
 # ---------------------------------------------------------------------------
+EMULATION = "src/hololink/emulation"
+
 cc_library(
     name = "emulation",
-    srcs = [
-        "src/hololink/emulation/base_transmitter.cpp",
-        "src/hololink/emulation/data_plane.cpp",
-        "src/hololink/emulation/hsb_config.cpp",
-        "src/hololink/emulation/hsb_emulator.cpp",
-        "src/hololink/emulation/mem_register.cpp",
-        "src/hololink/emulation/net.cpp",
-        "src/hololink/emulation/utils.cpp",
+    srcs = glob([
+        EMULATION + "/src/common/*.cpp",
+        EMULATION + "/src/linux/*.cpp",
+    ]),
+    hdrs = glob([
+        EMULATION + "/*.hpp",
+        EMULATION + "/src/common/*.hpp",
+        EMULATION + "/src/linux/*.hpp",
+    ]),
+    copts = COPTS + ["-Wno-missing-field-initializers"],
+    # Order matters (as in upstream's target_include_directories): the platform directory
+    # comes first so that `#include "net.hpp"` from src/common picks src/linux/net.hpp, which
+    # layers the platform types over the public emulation/net.hpp.
+    includes = [
+        EMULATION + "/src/linux",
+        EMULATION + "/src/common",
+        EMULATION + "/src",
+        EMULATION,
+        "src/hololink",
+        "src",
     ],
-    hdrs = glob(["src/hololink/emulation/*.hpp"]),
-    copts = COPTS,
-    includes = ["src/hololink/emulation"],
+    local_defines = ["SEPARATE_FRAMEMETADATA_PACKET=0"],
     deps = [
         ":core",
+        "@cuda//:cuda_runtime",  # DataPlane::send(DLTensor) bounces GPU tensors through host memory
         "@dlpack",
+        "@zlib",  # RoCEv2 transmitter iCRC
     ],
 )
 
-# Linux (plain UDP / RoCE-format) data plane of the emulator.
+# Upstream's emulated sensors (IMX274, VB1940, test pattern), for reference/tests.
 cc_library(
-    name = "emulation_linux",
-    srcs = [
-        "src/hololink/emulation/linux_data_plane.cpp",
-        "src/hololink/emulation/linux_transmitter.cpp",
-    ],
+    name = "emulation_sensors",
+    srcs = glob([EMULATION + "/sensors/*.cpp"]),
+    hdrs = glob([EMULATION + "/sensors/*.hpp"]),
     copts = COPTS,
-    deps = [
-        ":emulation",
-        "@cuda//:cuda_runtime",
-        "@zlib",
-    ],
+    deps = [":emulation"],
 )

@@ -12,7 +12,8 @@ URL templates. Everything is built from source except NVIDIA GXF (ADR-0005).
 | `gxf` | GXF 5.7.0 (`5.7.0_20260515_6a50c8f1a_holoscan-sdk-cu13`) | Graph Execution Framework runtime under Holoscan (adds `libgxf_pubsub.so`) | **binary** package from NVIDIA's Artifactory (the only one) |
 | `ucx` | 1.19.0 | required at runtime by `libgxf_ucx.so`/`libgxf_app.so`, by ucxx | rules_foreign_cc `configure_make` |
 | `hwloc` | 2.9.0 | CPU topology for holoscan::core | rules_foreign_cc `configure_make`, static |
-| `rmm` | 25.10.00 | RAPIDS memory manager (`librmm.so`, SONAME needed by `libgxf_rmm.so`) | hand-written BUILD, shared lib |
+| `rmm` | 26.02.00 | RAPIDS memory manager (`librmm.so`, SONAME needed by `libgxf_rmm.so`) | hand-written BUILD, shared lib |
+| `cccl` | 3.2.0 | libcu++/CUB/Thrust headers for rmm 26.02 (needs CCCL ≥ 3.1; the CUDA 13.0.2 toolkit bundles 3.0), GXF and Holoscan | header-only; replaces `@cuda//:libcudacxx` everywhere |
 | `rapids_logger` | 0.2.0 | logging shim used by rmm and GXF (`librapids_logger.so`) | hand-written BUILD, shared lib |
 | `ucxx` | 0.44.00 | C++ UCX wrapper (holoscan distributed apps) | hand-written BUILD, static |
 | `nvtx3` | v3.3.0-c-cpp | profiler headers | header-only |
