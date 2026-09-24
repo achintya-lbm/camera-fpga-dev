@@ -1,0 +1,24 @@
+# -*- mode: bazel -*-
+# CCCL: header-only libcu++ (<cuda/...>, <nv/...>), CUB (<cub/...>) and Thrust (<thrust/...>).
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "cccl",
+    hdrs = glob(
+        [
+            "libcudacxx/include/cuda/**",
+            "libcudacxx/include/nv/**",
+            "cub/cub/**",
+            "thrust/thrust/**",
+        ],
+        exclude = ["**/CMakeLists.txt"],
+    ),
+    includes = [
+        "libcudacxx/include",
+        "cub",
+        "thrust",
+    ],
+    deps = ["@cuda//:cudart_headers"],
+)

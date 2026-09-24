@@ -1,12 +1,12 @@
-"""RAPIDS Memory Manager (rmm) 25.10.00 — Holoscan's pinned version; also required
+"""RAPIDS Memory Manager (rmm) 26.02.00 — Holoscan 4.4.0's pin (cmake/deps/rmm.cmake); also required
 at runtime by the prebuilt GXF rmm extension (DT_NEEDED librmm.so).
 """
 
 load("//tools/workspace:archive.bzl", "archive_repository")
 
-_VERSION = "25.10.00"
+_VERSION = "26.02.00"
 
-_SHA256 = "33d1972bce23e9b45d0c1aedabfbc3fd2d2cb30715fa66d17088dd276d01e56c"
+_SHA256 = "f7460ec9f177d79e8a709b7011cd11392059bcbd906336f4f5b90ef2b5547683"
 
 def rmm_repository(name):
     archive_repository(

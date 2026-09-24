@@ -13,8 +13,8 @@ genrule(
     outs = ["cpp/include/rmm/version_config.hpp"],
     cmd = """cat > $@ <<'EOF'
 #pragma once
-#define RMM_VERSION_MAJOR 25
-#define RMM_VERSION_MINOR 10
+#define RMM_VERSION_MAJOR 26
+#define RMM_VERSION_MINOR 2
 #define RMM_VERSION_PATCH 0
 EOF""",
 )
@@ -41,8 +41,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "@cuda//:cuda_runtime",
-        "@cuda//:libcudacxx",
-        "@cuda//:thrust",
+        "@cccl",
         "@nvtx3",
         "@rapids_logger",
     ],

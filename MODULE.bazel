@@ -94,6 +94,7 @@ camera_fpga_dev_repositories = use_extension(
 use_repo(
     camera_fpga_dev_repositories,
     # NOTE: Keep these in alphabetical order.
+    "cccl",
     "dlpack",
     "eigen",
     "glslang",

@@ -577,12 +577,23 @@
   "moduleExtensions": {
     "//tools/workspace:default.bzl%camera_fpga_dev_repositories": {
       "general": {
-        "bzlTransitiveDigest": "cAQXTHNCiBV9o4Pm4dR68Ffs8jINwGPxXmX/ZDvb200=",
+        "bzlTransitiveDigest": "Qv3tuvcmXzAJ4MnDRsonp1jQ21pJ/BcPm1pGkIWto6g=",
         "usagesDigest": "+xLuTlbOpdT/T3i58oTtBwPUU6aSra9dTZWBBXQqPac=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
         ],
         "generatedRepoSpecs": {
+          "cccl": {
+            "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
+            "attributes": {
+              "urls": [
+                "https://github.com/NVIDIA/cccl/archive/refs/tags/v3.2.0.tar.gz"
+              ],
+              "sha256": "5e69383b2f3355291c7ca66625448d87686360c84c347a37ad439bb48fbea8e8",
+              "strip_prefix": "cccl-3.2.0",
+              "build_file": "@@//tools/workspace/cccl:package.BUILD.bazel"
+            }
+          },
           "dlpack": {
             "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
             "attributes": {
@@ -624,15 +635,14 @@
             "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
             "attributes": {
               "urls": [
-                "https://github.com/nvidia-holoscan/holoscan-sensor-bridge/archive/6930609c4ce264ec7e2936dd1f5813323fccb08e.tar.gz"
+                "https://github.com/nvidia-holoscan/holoscan-sensor-bridge/archive/refs/tags/2.7.0.tar.gz"
               ],
-              "sha256": "9e5f789975d8db0cb2aca01bdb8aa93266570146f42f7a5236b05260639a81b8",
-              "strip_prefix": "holoscan-sensor-bridge-6930609c4ce264ec7e2936dd1f5813323fccb08e",
+              "sha256": "ca0b86a3ac59db087217d33d4e93f161799d07e67cab5d8911718a9833db0037",
+              "strip_prefix": "holoscan-sensor-bridge-2.7.0",
               "build_file": "@@//tools/workspace/hololink:package.BUILD.bazel",
               "patches": [
-                "@@//tools/workspace/hololink/patches:0001-taurotech-da322-v1.2.1-pb.patch",
-                "@@//tools/workspace/hololink/patches:0002-fmt11-compat.patch",
-                "@@//tools/workspace/hololink/patches:0003-nvrtc-include-paths-env.patch"
+                "@@//tools/workspace/hololink/patches:0001-da322-identity-and-hsb-ip-2510-compat.patch",
+                "@@//tools/workspace/hololink/patches:0002-nvrtc-include-paths-env.patch"
               ],
               "patch_tool": "patch",
               "patch_args": [
@@ -743,10 +753,10 @@
             "repoRuleId": "@@//tools/workspace:archive.bzl%archive_repository",
             "attributes": {
               "urls": [
-                "https://github.com/rapidsai/rmm/archive/refs/tags/v25.10.00.tar.gz"
+                "https://github.com/rapidsai/rmm/archive/refs/tags/v26.02.00.tar.gz"
               ],
-              "sha256": "33d1972bce23e9b45d0c1aedabfbc3fd2d2cb30715fa66d17088dd276d01e56c",
-              "strip_prefix": "rmm-25.10.00",
+              "sha256": "f7460ec9f177d79e8a709b7011cd11392059bcbd906336f4f5b90ef2b5547683",
+              "strip_prefix": "rmm-26.02.00",
               "build_file": "@@//tools/workspace/rmm:package.BUILD.bazel"
             }
           },

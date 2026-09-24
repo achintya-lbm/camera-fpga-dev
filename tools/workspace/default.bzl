@@ -5,6 +5,7 @@ pinned version + sha256) and a `package.BUILD.bazel` (Bazel targets for the
 fetched tree). MODULE.bazel calls `use_repo` on the names declared here.
 """
 
+load("//tools/workspace/cccl:repository.bzl", "cccl_repository")
 load("//tools/workspace/dlpack:repository.bzl", "dlpack_repository")
 load("//tools/workspace/eigen:repository.bzl", "eigen_repository")
 load("//tools/workspace/glslang:repository.bzl", "glslang_repository")
@@ -25,6 +26,7 @@ load("//tools/workspace/ucx:repository.bzl", "ucx_repository")
 load("//tools/workspace/ucxx:repository.bzl", "ucxx_repository")
 
 def _camera_fpga_dev_repositories_impl(_module_ctx):
+    cccl_repository(name = "cccl")
     dlpack_repository(name = "dlpack")
     eigen_repository(name = "eigen")
     glslang_repository(name = "glslang")

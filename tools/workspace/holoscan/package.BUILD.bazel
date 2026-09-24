@@ -53,7 +53,7 @@ cc_library(
         "@cuda",
         "@cuda//:cuda_runtime",
         "@cuda//:cudart_headers",
-        "@cuda//:libcudacxx",
+        "@cccl",
         "@dlpack",
         "@eigen",
         "@fmt",
@@ -122,7 +122,7 @@ cuda_library(
     deps = [
         ":headers",
         "@cuda//:crt_headers",
-        "@cuda//:libcudacxx",
+        "@cccl",
     ],
 )
 
