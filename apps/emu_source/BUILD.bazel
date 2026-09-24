@@ -40,6 +40,5 @@ cc_binary(
         "@fmt",
         "@hololink//:core",
         "@hololink//:emulation",
-        "@hololink//:emulation_linux",
     ],
 )

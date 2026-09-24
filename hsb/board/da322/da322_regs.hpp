@@ -8,15 +8,21 @@
 
 #include "hololink/core/csi_formats.hpp"
 #include "hololink/core/hololink.hpp"
+#include "hsb/board/da322/da322_identity.hpp"
 
 namespace hsb::da322 {
 
-// Board identity as reported by BOOTP enumeration (vendor patch, enumerator.hpp).
-inline constexpr char kFpgaUuid[] = "2b6485ba-a2c4-4b58-aee2-b4d5e623927e";
-inline constexpr uint32_t kBoardId = hololink::TT_DA322_BOARD_ID;  // 9
-inline constexpr char kBoardDescription[] = "TauroTech DA322";
+// Identity, camera count and I2C bus numbering live in da322_identity.hpp (no hololink include,
+// so apps/emu_source can use them next to the emulator headers). Keep them in step with hololink:
+static_assert(kBoardId == hololink::TT_DA322_BOARD_ID);
+static_assert(kCameraI2cBusBase == hololink::CAM_I2C_BUS);
 
-inline constexpr unsigned kCameraCount = 4;  // J1A..J1D = CAM1..CAM4 = sensor 0..3
+// Clock / camera-power control register of the HSB IP (Hololink::setup_clock()). The vendor's
+// sequence for this board: no Renesas clock profile; 0x30 enables the clock synthesizer and its
+// output, then 0x0F enables camera power (upstream boards write 0x03 here).
+inline constexpr uint32_t kClockControl = 0x0000'0008;
+inline constexpr uint32_t kClockControlClockEnable = 0x30;
+inline constexpr uint32_t kClockControlCameraPower = 0x0F;
 
 // Vendor register block (§3.3).
 inline constexpr uint32_t kUserCsr = 0x7000'0000;     // bit0 ST_CLEAR (RW): reset MIPI_DT_STAT latch
@@ -43,12 +49,6 @@ inline constexpr uint8_t kDataTypeEmbedded = 0x12;
 // IS_RST_IN, so a low level keeps the sensor in reset even with the adapter's own reset released.
 inline constexpr uint32_t GpioPinForCamera(unsigned camera) { return camera; }
 inline constexpr uint32_t kGpioCameraEnableLevel = 1;  // value written to enable (vendor convention)
-
-// Camera I2C: each connector has its own bus; the FPGA numbers them CAM_I2C_BUS + k
-// (same convention as the vendor's imx477/imx219 drivers: i2c_bus = CAM_I2C_BUS + camera_id).
-inline constexpr uint32_t I2cBusForCamera(unsigned camera) {
-  return hololink::CAM_I2C_BUS + camera;
-}
 
 inline constexpr uint32_t LaneSettingAddress(unsigned camera) {
   return kMipiIpCoreBase | (camera * kMipiIpCoreStride) | kLaneSettingOffset;

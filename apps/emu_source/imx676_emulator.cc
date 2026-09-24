@@ -24,20 +24,21 @@ void Imx676Emulator::attach_to_i2c(hololink::emulation::I2CController& controlle
   controller.attach_i2c_peripheral(bus_address, kAddress, this);
 }
 
-I2CStatus Imx676Emulator::i2c_transaction(uint8_t peripheral_address, const std::vector<uint8_t>& write_bytes,
-                                          std::vector<uint8_t>& read_bytes) {
+I2CStatus Imx676Emulator::i2c_transaction(uint16_t peripheral_address, const uint8_t* write_bytes, uint16_t write_size,
+                                          uint8_t* read_bytes, uint16_t read_size) {
   if (peripheral_address != kAddress) return I2CStatus::I2C_STATUS_INVALID_PERIPHERAL_ADDRESS;
-  if (write_bytes.size() < 2) return I2CStatus::I2C_STATUS_INVALID_REGISTER_ADDRESS;
+  if (write_bytes == nullptr || write_size < 2) return I2CStatus::I2C_STATUS_INVALID_REGISTER_ADDRESS;
   const uint16_t base = static_cast<uint16_t>((write_bytes[0] << 8) | write_bytes[1]);
   std::lock_guard<std::mutex> lock(mutex_);
-  if (write_bytes.size() > 2) {
-    for (size_t i = 2; i < write_bytes.size(); ++i) {
+  if (write_size > 2) {
+    for (uint16_t i = 2; i < write_size; ++i) {
       registers_[static_cast<uint16_t>(base + i - 2)] = write_bytes[i];
       ++write_count_;
     }
     return I2CStatus::I2C_STATUS_SUCCESS;
   }
-  for (size_t i = 0; i < read_bytes.size(); ++i) {
+  if (read_size > 0 && read_bytes == nullptr) return I2CStatus::I2C_STATUS_READ_FAILED;
+  for (uint16_t i = 0; i < read_size; ++i) {
     auto it = registers_.find(static_cast<uint16_t>(base + i));
     read_bytes[i] = it == registers_.end() ? 0 : it->second;
   }
@@ -105,18 +106,19 @@ void Tca6408Emulator::attach_to_i2c(hololink::emulation::I2CController& controll
   controller.attach_i2c_peripheral(bus_address, address_, this);
 }
 
-I2CStatus Tca6408Emulator::i2c_transaction(uint8_t peripheral_address, const std::vector<uint8_t>& write_bytes,
-                                           std::vector<uint8_t>& read_bytes) {
+I2CStatus Tca6408Emulator::i2c_transaction(uint16_t peripheral_address, const uint8_t* write_bytes, uint16_t write_size,
+                                           uint8_t* read_bytes, uint16_t read_size) {
   if (peripheral_address != address_) return I2CStatus::I2C_STATUS_INVALID_PERIPHERAL_ADDRESS;
-  if (write_bytes.empty()) return I2CStatus::I2C_STATUS_INVALID_REGISTER_ADDRESS;
+  if (write_bytes == nullptr || write_size < 1) return I2CStatus::I2C_STATUS_INVALID_REGISTER_ADDRESS;
   const uint8_t r = write_bytes[0] & 0x03;
   std::lock_guard<std::mutex> lock(mutex_);
-  if (write_bytes.size() > 1) {
+  if (write_size > 1) {
     regs_[r] = write_bytes[1];
     if (r == 1) regs_[0] = write_bytes[1];  // outputs read back on the input port
     return I2CStatus::I2C_STATUS_SUCCESS;
   }
-  std::fill(read_bytes.begin(), read_bytes.end(), regs_[r]);
+  if (read_size > 0 && read_bytes == nullptr) return I2CStatus::I2C_STATUS_READ_FAILED;
+  std::fill(read_bytes, read_bytes + read_size, regs_[r]);
   return I2CStatus::I2C_STATUS_SUCCESS;
 }
 

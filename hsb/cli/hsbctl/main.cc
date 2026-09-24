@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
   ptp->add_option("--wait", ptp_wait, "seconds to wait for lock")->capture_default_str();
 
   auto* reset = app.add_subcommand("reset", "reset the HSB");
-  auto* setup_clock = app.add_subcommand("setup-clock", "vendor setup_clock(): FPGA reg 0x8 <- 0x30, 0x0F (clocks + camera power)");
+  auto* setup_clock = app.add_subcommand("setup-clock", "vendor setup_clock() for the DA322: FPGA reg 0x8 <- 0x30, 0x0F (clocks + camera power)");
 
   auto* sensor = app.add_subcommand("sensor", "IMX676 access through the driver");
   std::string sensor_port = "J1A";
@@ -296,8 +296,9 @@ int main(int argc, char** argv) {
       hl.reset();
       std::cout << "reset done\n";
     } else if (*setup_clock) {
-      hl.setup_clock({});
-      std::cout << fmt::format("setup_clock done; reg 0x8 = {:#x}\n", hl.read_uint32(0x8));
+      RequireDa322(*board, force)->EnableClocksAndCameraPower();
+      std::cout << fmt::format("setup_clock done; reg {:#x} = {:#x}\n", hsb::da322::kClockControl,
+                               hl.read_uint32(hsb::da322::kClockControl));
     } else if (*sensor) {
       const unsigned camera = hsb::da322::ParsePort(sensor_port);
       hololink::Metadata md = board->metadata;

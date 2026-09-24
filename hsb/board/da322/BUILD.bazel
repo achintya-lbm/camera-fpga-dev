@@ -8,6 +8,7 @@ cc_library(
     srcs = ["da322_board.cc"],
     hdrs = [
         "da322_board.hpp",
+        "da322_identity.hpp",
         "da322_regs.hpp",
     ],
     deps = ["@hololink//:core"],

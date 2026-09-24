@@ -1,6 +1,10 @@
 // emu_source — HSB emulator posing as a Tauro DA322 with N IMX676 cameras, for no-FPGA tests.
-// Frames are served on the Linux (UDP) data plane once the host starts each sensor; geometry
-// and frame rate follow the registers the host driver programs over emulated I2C.
+// Frames are served on the emulator's RoCEv2-over-UDP data plane (hololink's LinuxDataPlane)
+// once the host starts each sensor; geometry and frame rate follow the registers the host
+// driver programs over emulated I2C. The emulator advertises the DA322 identity (board id,
+// UUID) but its own hsb_ip_version: hololink 2.7.0's emulator implements the 0x2602 data-plane
+// register layout, so the vendor bitstream's 0x2511 layout cannot be emulated by it (that path
+// is exercised on the real board only).
 //
 //   emu_source --ip 127.0.0.1 --cameras 2            (then run cam_player/bandwidth_test with
 //                                                     configs/emulator_loopback.yaml)
@@ -21,13 +25,12 @@
 
 #include "apps/emu_source/frame_generator.hpp"
 #include "apps/emu_source/imx676_emulator.hpp"
-#include "hololink/core/enumerator.hpp"
-#include "hololink/core/hololink.hpp"
 #include "hololink/emulation/hsb_config.hpp"
 #include "hololink/emulation/hsb_emulator.hpp"
 #include "hololink/emulation/linux_data_plane.hpp"
 #include "hololink/emulation/net.hpp"
-#include "hsb/board/da322/da322_regs.hpp"
+// Not hololink/core/*.hpp: the emulation headers define the same register names as macros.
+#include "hsb/board/da322/da322_identity.hpp"
 
 namespace {
 
@@ -128,11 +131,11 @@ int main(int argc, char** argv) {
   if (!generic_board) {
     config.board_id_lo = static_cast<uint8_t>(hsb::da322::kBoardId & 0xFF);
     config.board_id_hi = static_cast<uint8_t>(hsb::da322::kBoardId >> 8);
-    if (hsb_config_set_uuid(config, hsb::da322::kFpgaUuid) != 0) {
+    if (hsb_config_set_uuid(&config, hsb::da322::kFpgaUuid) != 0) {
       std::cerr << "bad DA322 UUID\n";
       return 1;
     }
-    config.hsb_ip_version = 0x2511;  // matches the vendor bitstream
+    // config.hsb_ip_version stays HSB_EMULATOR_HSB_IP_VERSION (see the header comment).
   }
   config.sensor_count = hsb::da322::kCameraCount;
   config.data_plane_count = 1;

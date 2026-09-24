@@ -1,12 +1,11 @@
-// Register-level stand-ins for the IMX676 and the P22 adapter's TCA6408, attached to the HSB
-// emulator's I2C controller so the real NativeImx676Sensor driver can talk to them. The
-// IMX676 model derives the frame geometry and rate from the registers the host programs.
+// Emulated I2C peripherals for apps/emu_source: a register-file IMX676 whose geometry and frame
+// rate follow what the host driver programs, and the FSM:GO P22 adapter's TCA6408 expander.
+// Implements hololink::emulation::I2CPeripheral (hololink 2.7.0 pointer/size transaction API).
 #pragma once
 
 #include <cstdint>
 #include <map>
 #include <mutex>
-#include <vector>
 
 #include "hololink/emulation/hsb_emulator.hpp"
 #include "hololink/emulation/i2c_interface.hpp"
@@ -30,8 +29,11 @@ class Imx676Emulator : public hololink::emulation::I2CPeripheral {
 
   Imx676Emulator();
   void attach_to_i2c(hololink::emulation::I2CController& controller, uint8_t bus_address) override;
-  hololink::emulation::I2CStatus i2c_transaction(uint8_t peripheral_address, const std::vector<uint8_t>& write_bytes,
-                                                 std::vector<uint8_t>& read_bytes) override;
+  // write_bytes = 16-bit register address (big-endian) [+ data]; a transaction with data is a
+  // write, one without reads `read_size` bytes. The emulator passes the same buffer for both
+  // pointers, so the address is decoded before anything is stored into read_bytes.
+  hololink::emulation::I2CStatus i2c_transaction(uint16_t peripheral_address, const uint8_t* write_bytes,
+                                                 uint16_t write_size, uint8_t* read_bytes, uint16_t read_size) override;
 
   bool streaming() const;  // STANDBY == 0 && XMSTA == 0
   Geometry geometry() const;
@@ -50,8 +52,8 @@ class Tca6408Emulator : public hololink::emulation::I2CPeripheral {
  public:
   explicit Tca6408Emulator(uint8_t address = 0x20);
   void attach_to_i2c(hololink::emulation::I2CController& controller, uint8_t bus_address) override;
-  hololink::emulation::I2CStatus i2c_transaction(uint8_t peripheral_address, const std::vector<uint8_t>& write_bytes,
-                                                 std::vector<uint8_t>& read_bytes) override;
+  hololink::emulation::I2CStatus i2c_transaction(uint16_t peripheral_address, const uint8_t* write_bytes,
+                                                 uint16_t write_size, uint8_t* read_bytes, uint16_t read_size) override;
   uint8_t output() const;
 
  private:
