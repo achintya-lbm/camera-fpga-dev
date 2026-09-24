@@ -79,6 +79,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` in progress, `[!]` blocked (say why).
 - [ ] Results in `docs/bandwidth.md`
 
 ## M6 — Own FPGA build for DA322: passthrough first, then demosaic in the FPGA (DESIGN §12)
+- [ ] Branching (2026-09-24, user): FPGA image work on branch `fpga-da322`, host upgrade on `host-hololink-2.7`; `main` keeps the vendor-bitstream preview stack working. Scope: a **minimal, robust one-camera design (CAM4 = J1D)** first; the four-camera variant stays in the branch history (commit 2f4cda8)
 - [x] Sources located and vendored: `@hsb_fpga` = holoscan-sensor-bridge 2.7.0 (`fpga/nv_hsb_ip` SystemVerilog IP 0x2606, `nv_mipi_ref_design/mipi_cpnx_ref_design` for the DA326, Radiant build scripts) — 2026-09-23
 - [x] Pin gaps closed from the DA326 reference `.pdc` (SERDES, SFP_TX_DIS, EEPROM I2C, QSPI, GPIO) — `docs/hardware/da322.md`; J1B lane/clock discrepancy to verify on hardware
 - [ ] `[!]` Tooling (user): Radiant 2026.1 on the dev box + 60-day evaluation licence (CertusPro-NX is a subscription device per Lattice's table); build the unmodified DA326 reference as the flow check

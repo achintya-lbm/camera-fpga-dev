@@ -5,7 +5,7 @@ custom board around the same FPGA. Plan: `DESIGN.md` §12; checklist: `TODO.md` 
 
 | Directory | Content |
 |---|---|
-| `rtl/da322/`, `boards/da322/`, `radiant/` | **the DA322 design** (four-camera passthrough): `rtl/da322/README.md` for the register map and open points; `fpga/radiant/assemble_da322.sh` runs the Radiant flow |
+| (branch `fpga-da322`) | **the DA322 design** lives on the `fpga-da322` branch (`fpga/rtl/da322`, `fpga/boards/da322`, `fpga/radiant`) so that `main` stays the clean tree for launching previews against the vendor bitstream; the host upgrade to hololink 2.7.0 that our image needs is on `host-hololink-2.7` |
 | `bitstreams/` | vendor image (git-lfs), OTA manifest instructions; our images later under `bitstreams/da322/` |
 | `boards/<board>/` | pin constraints (`.pdc`), clocks (`.sdc`), board parameters — the only board-specific place |
 | `rtl/` | our RTL: DA322 top, CSI data-type filter, test-pattern generator |
