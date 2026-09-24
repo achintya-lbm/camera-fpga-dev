@@ -5,10 +5,12 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "emulated_peripherals",
     srcs = [
+        "da322_registers.cc",
         "frame_generator.cc",
         "imx676_emulator.cc",
     ],
     hdrs = [
+        "da322_registers.hpp",
         "frame_generator.hpp",
         "imx676_emulator.hpp",
     ],

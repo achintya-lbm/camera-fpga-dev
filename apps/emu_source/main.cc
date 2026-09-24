@@ -23,6 +23,7 @@
 #include <CLI/CLI.hpp>
 #include <fmt/format.h>
 
+#include "apps/emu_source/da322_registers.hpp"
 #include "apps/emu_source/frame_generator.hpp"
 #include "apps/emu_source/imx676_emulator.hpp"
 #include "hololink/emulation/hsb_config.hpp"
@@ -142,6 +143,9 @@ int main(int argc, char** argv) {
   config.sifs_per_sensor = 1;
 
   HSBEmulator hsb(config);
+  // Vendor lane/data-type registers and the CAM_EN GPIO block the host programs on a DA322.
+  hsb::emu::Da322RegisterFile da322_registers;
+  if (!generic_board) da322_registers.Attach(hsb);
   std::vector<std::unique_ptr<CameraEmulation>> cams;
   const IPAddress address = IPAddress_from_string(ip);
   auto& i2c = hsb.get_i2c(hololink::I2C_CTRL);
