@@ -1,5 +1,5 @@
 // DA322 build of the CertusPro-NX MIPI reference configuration (source: holoscan-sensor-bridge 2.7.0
-// fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/rtl/top/HOLOLINK_def.svh, edited for four cameras).
+// fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/rtl/top/HOLOLINK_def.svh, edited for one camera on J1D).
 // SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -80,7 +80,7 @@ package HOLOLINK_pkg;
 // Sensor RX IF
 //-----------------------------------------------------
 
-  `define SENSOR_RX_IF_INST  4               // DA322: J1A, J1B, J1C, J1D. Valid values: undefined, 1 - 32
+  `define SENSOR_RX_IF_INST  1               // DA322 one-camera image: J1D (CAM4) only. Valid values: undefined, 1 - 32
   //----------------------------------------------------------------------------------
   //If no Sensor RX Interfaces are used, then comment out "`define SENSOR_RX_IF_INST" 
   //This will remove Sensor RX IF I/Os from HOLOLINK_top module.
@@ -99,10 +99,10 @@ package HOLOLINK_pkg;
     // RX_PACKETIZER_EN = {        1,         1}
     //--------------------------------------------------------------------------------
     localparam integer  SIF_RX_PACKETIZER_EN   [`SENSOR_RX_IF_INST-1:0] = '{default:1};               
-    localparam integer  SIF_RX_VP_COUNT        [`SENSOR_RX_IF_INST-1:0] = {1   , 1   , 1   , 1   };
-    localparam integer  SIF_RX_SORT_RESOLUTION [`SENSOR_RX_IF_INST-1:0] = {2   , 2   , 2   , 2   };
-    localparam integer  SIF_RX_VP_SIZE         [`SENSOR_RX_IF_INST-1:0] = {64  , 64  , 64  , 64  };
-    localparam integer  SIF_RX_NUM_CYCLES      [`SENSOR_RX_IF_INST-1:0] = {3   , 3   , 3   , 3   };
+    localparam integer  SIF_RX_VP_COUNT        [`SENSOR_RX_IF_INST-1:0] = {1   };
+    localparam integer  SIF_RX_SORT_RESOLUTION [`SENSOR_RX_IF_INST-1:0] = {2   };
+    localparam integer  SIF_RX_VP_SIZE         [`SENSOR_RX_IF_INST-1:0] = {64  };
+    localparam integer  SIF_RX_NUM_CYCLES      [`SENSOR_RX_IF_INST-1:0] = {3   };
   `endif
 
 //-----------------------------------------------------
@@ -131,7 +131,7 @@ package HOLOLINK_pkg;
 //------------------------------------------------------------------------------
 
   `define SPI_INST  2   // SPI interface instantiation number. Valid values: undefined, 1 - 8
-  `define I2C_INST  5   // 0 = control/EEPROM bus, 1..4 = camera buses J1A..J1D (host: I2C bus 1+k). Valid values: undefined, 1 - 8
+  `define I2C_INST  2   // 0 = control/EEPROM bus, 1 = camera bus of J1D (host: I2C bus 1). Valid values: undefined, 1 - 8
   //`define UART_INST 1
   `define GPIO_INST 16  // INOUT GPIO instantiation number.    Valid values: 1 - 255
 

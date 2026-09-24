@@ -1,13 +1,14 @@
-// Tauro DA322 top level: four MIPI CSI-2 cameras -> Hololink IP -> 10G SFP+.
+// Tauro DA322 one-camera top level: CAM4 (connector J1D) -> Hololink IP -> 10G SFP+.
 //
 // Derived from holoscan-sensor-bridge 2.7.0 fpga/nv_mipi_ref_design/mipi_cpnx_ref_design/rtl/top/FPGA_top.sv
-// (Apache-2.0, NVIDIA), which targets the two-camera Tauro DA326 on the same FPGA/pin family. Changes:
-//   * four camera receivers (J1A..J1D) with Tauro's CSI data-type filter, behind user window 2
-//     (0x3000_Y000, Y = camera; the D-PHY IP's lane register is 0x3000_Y028 as in the vendor image)
-//   * five I2C buses: 0 = control/EEPROM, 1..4 = camera J1A..J1D (host convention: I2C bus 1 + camera)
-//   * CAM_EN[k] driven by Hololink GPIO k (host convention), MFP header J4/J5 on GPIO 4..15
-//   * USER_CSR / MIPI_DT_CTRL / MIPI_DT_STAT at 0x7000_0000 (da322_user_csr)
-//   * no MAX96716 deserializer, no PoC controller, no VSYNC generator (DA326-only features)
+// (Apache-2.0, NVIDIA), whose camera 0 already sits on the DA322's J1D balls. Kept deliberately minimal:
+//   * one camera receiver with Tauro's CSI data-type filter, user window 2 (0x3000_0000; D-PHY lane
+//     register at 0x3000_0028 as in the vendor image, camera index 0)
+//   * two I2C buses: 0 = control/EEPROM (H7/H6), 1 = J1D camera bus (D15/D16)
+//   * CAM_EN of J1D driven by Hololink GPIO 0; CAM_MCLK of J1D driven with 27.043 MHz
+//   * USER_CSR / MIPI_DT_CTRL / MIPI_DT_STAT / BUILD_ID at 0x7000_000x
+//   * no MFP GPIO, no deserializer/PoC/VSYNC logic (DA326-only), no other connectors
+// The four-camera variant is in git history (branch fpga-da322, commit 2f4cda8).
 `include "HOLOLINK_def.svh"
 
 module FPGA_top
@@ -16,7 +17,7 @@ module FPGA_top
 #(
   parameter BUILD_REV = 48'h0
 )(
-  input           RESET_N,                 // H1 (pulled up; no button on the DA322 is fine)
+  input           RESET_N,                 // H1, pulled up
   // 10GbE SFP+
   input           ETH_REFCLK_P,            // D10 / E10, 161.1328125 MHz
   input           ETH_REFCLK_N,
@@ -26,29 +27,26 @@ module FPGA_top
   output          ETH_TXD_N,
   output          SFP_TX_DIS,
 
-  // MIPI CSI-2, index 0..3 = J1A, J1B, J1C, J1D
-  inout   [3:0]   MIPI_CAM_CLK_P,
-  inout   [3:0]   MIPI_CAM_CLK_N,
-  inout   [3:0]   MIPI_CAM_DATA_P [3:0],
-  inout   [3:0]   MIPI_CAM_DATA_N [3:0],
+  // MIPI CSI-2, J1D
+  inout           MIPI_CAM_CLK_P,
+  inout           MIPI_CAM_CLK_N,
+  inout   [3:0]   MIPI_CAM_DATA_P,
+  inout   [3:0]   MIPI_CAM_DATA_N,
 
   // I2C
   inout           CTRL_I2C_SCL,
   inout           CTRL_I2C_SDA,
-  inout   [3:0]   CAM_I2C_SCL,
-  inout   [3:0]   CAM_I2C_SDA,
+  inout           CAM_I2C_SCL,
+  inout           CAM_I2C_SDA,
 
-  // Camera enable (pin 17 of each 22-pin connector) and reference clock (pin 18)
-  output  [3:0]   CAM_EN,
-  output  [3:0]   CAM_MCLK,
+  // J1D pin 17 (camera enable) and pin 18 (reference clock)
+  output          CAM_EN,
+  output          CAM_MCLK,
 
   // QSPI configuration flash
   output          FLASH_SPI_MCSN,
   output          FLASH_SPI_MSCK,
-  inout   [3:0]   FLASH_SPI_SDIO,
-
-  // MFP headers: GPIO[10:0] = J4 pins 1..11 (GPIO0..GPIO10), GPIO[11] = J5 pin 1 (GPIO11)
-  inout   [11:0]  GPIO
+  inout   [3:0]   FLASH_SPI_SDIO
 );
 
 //------------------------------------------------------------------------------
@@ -80,27 +78,26 @@ module FPGA_top
   logic [47:0] ptp_sec;
   logic        ptp_cam_clk;
   logic [15:0] gpio_out;
+  logic [15:0] gpio_dir;
+  logic [15:0] gpio_in;
   logic        sys_pps;
 
   assign usr_clk_locked = &usr_clk_rdy;
 
   clk_n_rst u_clk_n_rst (
-    .i_refclk      ( usr_clk [0]    ), // pcs user clock output
-    .i_locked      ( usr_clk_locked ), // pcs user clock locked
-
-    .o_mipi_clk    ( mipi_clk       ), // 27.043MHz clock for MIPI
-    .o_pcs_clk     ( pcs_clk        ), // pcs calibration clock
-    .o_hif_clk     ( hif_clk        ), // host interface clock
-    .o_apb_clk     ( apb_clk        ), // apb interface clock
-    .o_ptp_clk     ( ptp_clk        ), // ptp interface clock
-
+    .i_refclk      ( usr_clk [0]    ),
+    .i_locked      ( usr_clk_locked ),
+    .o_mipi_clk    ( mipi_clk       ),
+    .o_pcs_clk     ( pcs_clk        ),
+    .o_hif_clk     ( hif_clk        ),
+    .o_apb_clk     ( apb_clk        ),
+    .o_ptp_clk     ( ptp_clk        ),
     .i_ptp_nsec    ( ptp_nsec       ),
-    .o_ptp_cam_clk ( ptp_cam_clk    ), // ptp 24MHz clock
-    .i_pb_rst_n    ( RESET_N        ), // asynchronous active low board reset
-    .i_sw_rst      ( sw_sys_rst     ), // software controlled active high reset
-
-    .o_sys_rst     ( sys_rst        ), // system active high reset
-    .o_pcs_rst_n   ( pcs_rst_n      )  // ethernet pcs active low reset
+    .o_ptp_cam_clk ( ptp_cam_clk    ),
+    .i_pb_rst_n    ( RESET_N        ),
+    .i_sw_rst      ( sw_sys_rst     ),
+    .o_sys_rst     ( sys_rst        ),
+    .o_pcs_rst_n   ( pcs_rst_n      )
   );
 
 //------------------------------------------------------------------------------
@@ -109,28 +106,23 @@ module FPGA_top
 
   assign SFP_TX_DIS = 1'b0;
 
-  // Camera enable: Hololink GPIO k (host writes GPIO k HIGH to power camera k, as with the vendor image).
-  assign CAM_EN = gpio_out[3:0];
+  // Camera enable = Hololink GPIO 0 (the host drives GPIO k high to power camera k).
+  assign CAM_EN      = gpio_out[0];
+  assign gpio_in     = {15'h0, gpio_out[0]};
 
-  // Camera reference clock on pin 18 of every connector (the FSM:GO modules carry their own INCK
-  // oscillator; the clock is provided for modules that need it, as the vendor image does).
-  genvar m;
-  generate
-    for (m = 0; m < 4; m++) begin: cam_mclk
-      ODDRX1 u_mipi_clk (
-        .D0   ( 1'b1            ),
-        .D1   ( 1'b0            ),
-        .SCLK ( mipi_clk        ),
-        .RST  ( !usr_clk_locked ),
-        .Q    ( CAM_MCLK[m]     )
-      );
-    end
-  endgenerate
+  // Camera reference clock on J1D pin 18 (the FSM:GO module has its own oscillator; kept like the vendor image).
+  ODDRX1 u_mipi_clk (
+    .D0   ( 1'b1            ),
+    .D1   ( 1'b0            ),
+    .SCLK ( mipi_clk        ),
+    .RST  ( !usr_clk_locked ),
+    .Q    ( CAM_MCLK        )
+  );
 
   logic init_done;
 
 //------------------------------------------------------------------------------
-// APB user register windows (Hololink external APB ports, index n <-> address 0x(n+1)000_0000)
+// APB user register windows (Hololink external APB port n <-> address 0x(n+1)000_0000)
 //------------------------------------------------------------------------------
 
   logic [`REG_INST-1:0] apb_psel;
@@ -144,7 +136,7 @@ module FPGA_top
 
   genvar i;
 
-  // Windows 3, 4, 5, 7 (0x4000_0000, 0x5000_0000, 0x6000_0000, 0x8000_0000) are unused: answer at once.
+  // Windows 3, 4, 5, 7 are unused: answer at once with an invalid-read marker.
   generate
     for (i = 3; i < `REG_INST; i++) begin: apb_unused
       if (i != 6) begin
@@ -175,7 +167,6 @@ module FPGA_top
 
   generate
     for (i=0; i<`HOST_IF_INST; i++) begin: ethernet_10gb
-
       eth_10gb_top #(
         .ID               ( 0                         )
       ) u_10gbe (
@@ -210,14 +201,12 @@ module FPGA_top
         .o_mac_apb_pserr  ( apb_pserr         [1+i*2] ),
         .i_pclk           ( hif_clk                   ),
         .i_prst_n         (~hif_rst                   ),
-
         .i_axis_tx_tvalid ( hif_tx_axis_tvalid    [i] ),
         .i_axis_tx_tlast  ( hif_tx_axis_tlast     [i] ),
         .i_axis_tx_tkeep  ( hif_tx_axis_tkeep     [i] ),
         .i_axis_tx_tdata  ( hif_tx_axis_tdata     [i] ),
         .i_axis_tx_tuser  ( hif_tx_axis_tuser     [i] ),
         .o_axis_tx_tready ( hif_tx_axis_tready    [i] ),
-
         .o_axis_rx_tvalid ( hif_rx_axis_tvalid    [i] ),
         .o_axis_rx_tlast  ( hif_rx_axis_tlast     [i] ),
         .o_axis_rx_tkeep  ( hif_rx_axis_tkeep     [i] ),
@@ -233,12 +222,11 @@ module FPGA_top
         .o_pcs_rxval      (                           ),
         .o_pcs_txrdy      (                           )
       );
-
     end
   endgenerate
 
 //------------------------------------------------------------------------------
-// QSPI configuration flash
+// QSPI configuration flash (SPI controller 0; controller 1 unused)
 //------------------------------------------------------------------------------
 
   logic [3:0] flsh_spi_sdio_sync;
@@ -262,17 +250,17 @@ module FPGA_top
   assign FLASH_SPI_MCSN = spi_csn  [0];
   assign FLASH_SPI_SDIO = spi_oen  [0] ? spi_sdio_o[0] : 4'hz;
   assign spi_sdio_i[0]  = flsh_spi_sdio_sync;
-  assign spi_sdio_i[1]  = 4'h0;  // second SPI controller unused on the DA322
+  assign spi_sdio_i[1]  = 4'h0;
 
 //------------------------------------------------------------------------------
-// I2C: bus 0 = control/EEPROM (H7/H6), buses 1..4 = cameras J1A..J1D
+// I2C: bus 0 = control/EEPROM, bus 1 = J1D camera
 //------------------------------------------------------------------------------
 
-  logic       ctrl_i2c_scl_sync, ctrl_i2c_sda_sync;
-  logic [3:0] cam_i2c_scl_sync,  cam_i2c_sda_sync;
+  logic ctrl_i2c_scl_sync, ctrl_i2c_sda_sync;
+  logic cam_i2c_scl_sync,  cam_i2c_sda_sync;
 
   glitch_filter  #(
-    .DATA_WIDTH   ( 10                                    ),
+    .DATA_WIDTH   ( 4                                     ),
     .RESET_VALUE  ( 1'b1                                  ),
     .FILTER_DEPTH ( 8                                     )
   ) i2c_glitch_filter (
@@ -292,17 +280,13 @@ module FPGA_top
   assign CTRL_I2C_SCL = i2c_scl_en[0] ? 1'bz : 1'b0;
   assign CTRL_I2C_SDA = i2c_sda_en[0] ? 1'bz : 1'b0;
 
-  generate
-    for (i = 0; i < 4; i++) begin: cam_i2c
-      assign i2c_scl[1+i]   = i2c_scl_en[1+i] ? cam_i2c_scl_sync[i] : 1'b0;
-      assign i2c_sda[1+i]   = i2c_sda_en[1+i] ? cam_i2c_sda_sync[i] : 1'b0;
-      assign CAM_I2C_SCL[i] = i2c_scl_en[1+i] ? 1'bz : 1'b0;
-      assign CAM_I2C_SDA[i] = i2c_sda_en[1+i] ? 1'bz : 1'b0;
-    end
-  endgenerate
+  assign i2c_scl[1]   = i2c_scl_en[1] ? cam_i2c_scl_sync : 1'b0;
+  assign i2c_sda[1]   = i2c_sda_en[1] ? cam_i2c_sda_sync : 1'b0;
+  assign CAM_I2C_SCL  = i2c_scl_en[1] ? 1'bz : 1'b0;
+  assign CAM_I2C_SDA  = i2c_sda_en[1] ? 1'bz : 1'b0;
 
 //------------------------------------------------------------------------------
-// Camera receivers (user window 2: 0x3000_Y000, Y = camera 0..3, sub-decoded on address bits 13:12)
+// Camera receiver (user window 2: 0x3000_0000; the D-PHY IP's LMMI registers are at +0x000..0x3FF)
 //------------------------------------------------------------------------------
 
   logic [`SENSOR_RX_IF_INST-1:0] sif_rx_clk;
@@ -314,24 +298,12 @@ module FPGA_top
   logic [`SENSOR_RX_IF_INST-1:0] sif_rx_axis_tready;
   logic [15:0] sif_event;
 
-  logic [31:0] dt_filter;                        // MIPI_DT_CTRL, one byte per camera
-  logic [31:0] dt_seen;                          // MIPI_DT_STAT
+  logic [31:0] dt_filter;      // MIPI_DT_CTRL (byte 0 used)
+  logic [31:0] dt_seen;        // MIPI_DT_STAT (byte 0 used)
   logic        dt_seen_clear;
 
-  logic [3:0]  rcvr_apb_sel;
-  logic [3:0]  rcvr_apb_ready;
-  logic [31:0] rcvr_apb_rdata [3:0];
-  logic [3:0]  rcvr_apb_serr;
-
-  assign sif_event = {12'h0, sif_rx_axis_tlast[3:0]};
-
-  // Window 2 fan-out and response mux by camera index.
-  always_comb begin
-    for (int k = 0; k < 4; k++) rcvr_apb_sel[k] = apb_psel[2] && (apb_paddr[13:12] == k[1:0]);
-    apb_pready[2] = rcvr_apb_ready[apb_paddr[13:12]];
-    apb_prdata[2] = rcvr_apb_rdata[apb_paddr[13:12]];
-    apb_pserr [2] = rcvr_apb_serr [apb_paddr[13:12]];
-  end
+  assign sif_event      = {15'h0, sif_rx_axis_tlast[0]};
+  assign dt_seen[31:8]  = 24'h0;
 
   generate
     for (i=0; i<`SENSOR_RX_IF_INST; i++) begin: cam_sensor_rcvr
@@ -346,14 +318,14 @@ module FPGA_top
         .i_pll_locked       ( usr_clk_locked         ),
         .i_apb_clk          ( apb_clk                ),
         .i_apb_rst          ( apb_rst                ),
-        .i_apb_sel          ( rcvr_apb_sel       [i] ),
+        .i_apb_sel          ( apb_psel           [2] ),
         .i_apb_enable       ( apb_penable            ),
         .i_apb_addr         ( apb_paddr              ),
         .i_apb_wdata        ( apb_pwdata             ),
         .i_apb_write        ( apb_pwrite             ),
-        .o_apb_ready        ( rcvr_apb_ready     [i] ),
-        .o_apb_rdata        ( rcvr_apb_rdata     [i] ),
-        .o_apb_serr         ( rcvr_apb_serr      [i] ),
+        .o_apb_ready        ( apb_pready         [2] ),
+        .o_apb_rdata        ( apb_prdata         [2] ),
+        .o_apb_serr         ( apb_pserr          [2] ),
         .o_axis_tvalid      ( sif_rx_axis_tvalid [i] ),
         .o_axis_tlast       ( sif_rx_axis_tlast  [i] ),
         .o_axis_tdata       ( sif_rx_axis_tdata  [i] ),
@@ -361,23 +333,25 @@ module FPGA_top
         .o_axis_tuser       ( sif_rx_axis_tuser  [i] ),
         .o_axis_tidx        (                        ),
         .i_axis_tready      ( sif_rx_axis_tready [i] ),
-        .i_dt_filter        ( dt_filter    [8*i +: 8] ),
+        .i_dt_filter        ( dt_filter        [7:0] ),
         .i_dt_seen_clear    ( dt_seen_clear          ),
-        .o_dt_seen          ( dt_seen      [8*i +: 8] ),
-        .mipi_cam_clk_n_io  ( MIPI_CAM_CLK_N     [i] ),
-        .mipi_cam_clk_p_io  ( MIPI_CAM_CLK_P     [i] ),
-        .mipi_cam_data_n_io ( MIPI_CAM_DATA_N    [i] ),
-        .mipi_cam_data_p_io ( MIPI_CAM_DATA_P    [i] )
+        .o_dt_seen          ( dt_seen          [7:0] ),
+        .mipi_cam_clk_n_io  ( MIPI_CAM_CLK_N         ),
+        .mipi_cam_clk_p_io  ( MIPI_CAM_CLK_P         ),
+        .mipi_cam_data_n_io ( MIPI_CAM_DATA_N        ),
+        .mipi_cam_data_p_io ( MIPI_CAM_DATA_P        )
      );
 
     end
   endgenerate
 
 //------------------------------------------------------------------------------
-// USER_CSR / MIPI_DT_CTRL / MIPI_DT_STAT (user window 6: 0x7000_0000)
+// USER_CSR / MIPI_DT_CTRL / MIPI_DT_STAT / BUILD_ID (user window 6: 0x7000_0000)
 //------------------------------------------------------------------------------
 
-  da322_user_csr u_user_csr (
+  da322_user_csr #(
+    .BUILD_ID        ( 32'hDA32_2101  )   // 1-camera image, revision 1
+  ) u_user_csr (
     .i_apb_clk       ( apb_clk        ),
     .i_apb_rst       ( apb_rst        ),
     .i_apb_sel       ( apb_psel   [6] ),
@@ -392,33 +366,6 @@ module FPGA_top
     .o_dt_seen_clear ( dt_seen_clear  ),
     .i_dt_seen       ( dt_seen        )
   );
-
-//------------------------------------------------------------------------------
-// GPIO: 0..3 camera enables (outputs above), 4..15 = MFP header pins
-//------------------------------------------------------------------------------
-
-  logic [15:0] gpio_in;
-  logic [15:0] gpio_dir;   // 0 = output, 1 = input
-  logic [11:0] gpio_pad_sync;
-
-  data_sync #(
-    .DATA_WIDTH  ( 12   ),
-    .RESET_VALUE ( 1'b0 )
-  ) gpio_synchronizer (
-    .clk         ( hif_clk       ),
-    .rst_n       (~hif_rst       ),
-    .sync_in     ( GPIO          ),
-    .sync_out    ( gpio_pad_sync )
-  );
-
-  assign gpio_in[3:0]  = gpio_out[3:0];   // camera enables read back what is driven
-  assign gpio_in[15:4] = gpio_pad_sync;
-
-  generate
-    for (i = 0; i < 12; i++) begin: mfp_gpio
-      assign GPIO[i] = gpio_dir[4+i] ? 1'bz : gpio_out[4+i];
-    end
-  endgenerate
 
 //------------------------------------------------------------------------------
 // Hololink IP

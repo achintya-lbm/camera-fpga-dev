@@ -2,7 +2,7 @@
 // the register layout Tauro's vendor bitstream exposes, so hsb/board/da322 works unchanged.
 //
 //   0x0  USER_CSR      bit0 ST_CLEAR (RW): while 1, the latched MIPI_DT_STAT values are cleared
-//   0x4  MIPI_DT_CTRL  [7:0] cam0 (J1A) .. [31:24] cam3 (J1D): forward only this CSI data type; 0 = all
+//   0x4  MIPI_DT_CTRL  [7:0] camera 0 (the one-camera image uses byte 0 only): forward only this CSI data type; 0 = all
 //   0x8  MIPI_DT_STAT  same layout, RO: last long-packet data type seen per camera (0x00/0x01 excluded)
 //   0xC  BUILD_ID      RO: 0xDA32_2xxx identifies this design (not present in the vendor image)
 module da322_user_csr #(
