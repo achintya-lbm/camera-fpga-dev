@@ -50,5 +50,17 @@ mode, CRC checked on every frame, 0 DMAR faults, summaries `/tmp/bw_cam4_roce*.j
 | — | `CROP_1280X720_RAW10` | 149.27 | 1.376 Gbps, 4473 frames, 0 gaps/drops, CRC 4473/4473 | PASS |
 | C2' (2026-09-23) | `BIN2_RAW12` + `hmax: 341` | 59.96 | 2.273 Gbps, 1796 frames, 0 gaps/drops, CRC 1796/1796, image verified | PASS |
 
+2026-09-24, test machine, DA322 v2511, **hololink 2.7.0 + Holoscan SDK 4.4.0** (branch
+`host-hololink-2.7`, ADR-0006), RoCE receiver, one camera on J1D (`configs/da322_cam4.yaml`), 20 s,
+CRC checked on every frame, logs `~/host27_test/` on the test machine:
+
+| Row | Mode | fps | Measured | Result |
+|---|---|---|---|---|
+| A1 (30 fps) | `FULL_RAW10` | 29.98 | 3.787 Gbps, 597 frames, 0 gaps/drops, CRC 597/597 | PASS |
+
+Same figures as the 2.5.0-PB6 stack on 2026-09-22: the host migration is neutral on the vendor
+bitstream. Two-camera preview (`configs/da322_cam3_cam4.yaml`, `cam_tuner`, 30 s): J1D `FULL_RAW10`
+29.75 fps, 0 gaps; J1C `BIN2_RAW12_60` 59.4 fps, 5 gaps within the first 2 s (start-up), 0 afterwards.
+
 Record for later rows: date, machine, bitstream version, hololink commit, receiver memory path
 (GPU VRAM / pinned host), CSV path.

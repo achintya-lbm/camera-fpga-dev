@@ -1,6 +1,6 @@
 // hololink JIT-compiles its CUDA kernels with NVRTC and needs the CUDA headers at runtime. The
 // hermetic build ships them in the runfiles; this resolves their directories and exports them via
-// HOLOLINK_NVRTC_INCLUDE_PATHS (honoured by our hololink patch 0003) before any operator starts.
+// HOLOLINK_NVRTC_INCLUDE_PATHS (honoured by our hololink patch 0002-nvrtc-include-paths-env) before any operator starts.
 #pragma once
 
 #include <string>

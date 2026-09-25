@@ -5,6 +5,52 @@ Keep raw measurements in `docs/bandwidth.md`; keep this file narrative.
 
 ---
 
+## 2026-09-24 — Host stack migrated to hololink 2.7.0 + Holoscan SDK 4.4.0 (branch `host-hololink-2.7`)
+
+- Scope (worker session for the main one): move the host to hololink 2.7.0 and the Holoscan SDK its
+  `docker/build.sh` pins (4.4.0), keep the vendor bitstream (IP 0x2511) streaming, leave `main`
+  untouched. Six commits on the branch: workspace pins (Holoscan/GXF/magic_enum; rmm/CCCL), hololink
+  2.7.0 + patch, code port, emulator registers, docs. ADR-0006.
+- Pins: Holoscan **4.4.0** from source (pubsub common/runtime/in_memory folded into
+  `libholoscan_core.so`; Fast DDS/IPC, pose_tree, inference not built), GXF **5.7.0** binary
+  (adds `libgxf_pubsub.so`), rmm **26.02.00** (GXF 5.7 includes its flat `rmm/mr/*.hpp` layout),
+  **CCCL 3.2.0** as a new header repo `@cccl` (rmm 26.02 needs ≥ 3.1; the CUDA 13.0.2 toolkit bundles
+  3.0 — `@cccl` replaces `@cuda//:libcudacxx` wherever rmm headers are reached), magic_enum **0.9.7**
+  (`<magic_enum/magic_enum.hpp>` layout). UCX 1.19.0, ucxx 0.44.00, rapids_logger 0.2.0, CUDA 13.0.2,
+  Bazel 8.8.0 unchanged. Both Holoscan patches re-diffed, still build-system-only.
+- hololink: the vendor patch is no longer applied (kept in `tools/workspace/hololink/vendor/`). Our
+  `0001-da322-identity-and-hsb-ip-2510-compat` adds board id 9 / UUID / enumeration strategy and folds
+  upstream's `hsb_lite_2510` module behaviour into the legacy classes: `DataChannel` accepts ≥ 0x2510
+  and below 0x2602 programs `DP_ADDRESS_0..3`/`DP_BUFFER_MASK` (≤ 4 pages, 78-byte header); the
+  receiver ops pick `Hsb2510RoceReceiver`/`Hsb2510LinuxReceiver` (immediate `page[7:0] | psn[31:8]`)
+  below 0x2603. `0002` (NVRTC include paths) re-diffed; the fmt-11 patch is upstream now. The vendor
+  `setup_clock()` (reg `0x8 ← 0x30`, `0x0F`, no Renesas profile) lives in
+  `Da322Board::EnableClocksAndCameraPower()`. Not ported: SIF_2/3 frame-end sequencer events
+  (unused) and the vendor's `write_uint32` sequence-check tweak (`block_enable(false)` anyway).
+- Findings: 2.7.0's `Hololink::trigger_reset()` dropped 2.5.0's SPI reset-controller writes — the
+  DA322 resets and re-enumerates fine without them (~7 s). The 2.7.0 emulator answers
+  `RESPONSE_INVALID_ADDR` for unmapped registers, so `apps/emu_source` now emulates `0x3000_Y028`, the
+  vendor CSR block and the CAM_EN GPIO registers (`Da322RegisterFile`). hololink core and emulation
+  headers cannot share a translation unit (macro clashes) → `hsb/board/da322/da322_identity.hpp`.
+  The emulator implements the 0x2602 layout, so the loopback covers the new-layout path only.
+- Dev box: `bazel build //... && bazel test //...` green (16 tests). Loopback `bandwidth_test`, 2 cams
+  `CROP_1280X720_RAW10` 30 fps, 15 s: PASS, 0 gaps. Loopback `cam_tuner` (CsiToBayer NVRTC JIT +
+  MJPEG): both previews served; 7/15 frame gaps in the first second (start-up), none afterwards (old
+  stack: 1).
+- Test machine (`docs/machines.md`), vendor bitstream 0x2511, RoCE, separate clone
+  `~/robotics/camera-fpga-dev-host27` (bundle clone with `GIT_LFS_SKIP_SMUDGE=1` — no GitHub key there;
+  built in 118 s thanks to the disk cache). `hsbctl info`: "TauroTech DA322", `hsb_ip_version 0x2511`,
+  date `0x09013454`. `bandwidth_test --config configs/da322_cam4.yaml --duration 20 --crc-every 1`:
+  **PASS** — 597 frames, 29.98 fps, 3.787 Gbps, 0 gaps/drops, CRC 597/597, log confirms the pre-0x2603
+  immediate layout. `cam_tuner --config configs/da322_cam3_cam4.yaml` 30 s: J1D `FULL_RAW10` 897 frames
+  29.75 fps 0 gaps; J1C `BIN2_RAW12_60` 1790 frames 59.4 fps, 5 gaps/5 drops all within the first 2 s,
+  0 afterwards; previews on :8080/:8081. The user's preview (main, 2.5.0-PB6) was stopped for 80 s and
+  relaunched with the exact command; healthy afterwards (0 gaps both cameras, HTTP 200). The relaunch
+  truncates `~/captures/cam_tuner.log` (the command's own redirect).
+- Open: start-up frame gaps (5–15) on the new stack vs 1 on the old — check the sensor-start vs
+  receiver-start ordering in 2.7.0's `BaseReceiverOp`; merge of `host-hololink-2.7` into `main` is the
+  user's call; `docs/bandwidth.md` still carries the 2.5.0-PB6 rows as history.
+
 ## 2026-09-24 — DA322 passthrough design written; Radiant installed but unlicensed
 
 - User: standard Bayer passthrough at full-res 30 fps first, JTAG reflash OK, Radiant at `~/lscc/radiant`.
